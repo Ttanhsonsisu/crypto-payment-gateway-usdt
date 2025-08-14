@@ -1,0 +1,58 @@
+server:
+  port: 8080
+  servlet:
+    context-path: /
+spring:
+  profiles:
+    active: dev
+
+  datasource:
+    url : jdbc:postgresql://localhost:5432/postgres
+    username: postgres
+    password: 1234
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        jdbc:
+          lob:
+            non_contextual_creation: true
+    generate-ddl: true
+    defer-datasource-initialization: true
+
+  sql:
+    init:
+      mode: always
+#      data-locations: classpath:data.sql # optional when init data struture
+  security:
+    jwt:
+      secret: 6ee0722956002f69de212acbe4a300fe58477a38e5f5c1c893ac6407e6936e369d4a428193b024a3d5d8a0ef5ae0f247
+      expiration: 86400000 # 24 hours
+
+logging:
+  level:
+    com.UsdtWallet.UsdtWallet: DEBUG
+    org.springframework.security: DEBUG
+  pattern:
+    console: "%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+  file:
+    name: logs/application.log
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,env
+  endpoint:
+    health:
+      show-details: when_authorized
+
+
+
