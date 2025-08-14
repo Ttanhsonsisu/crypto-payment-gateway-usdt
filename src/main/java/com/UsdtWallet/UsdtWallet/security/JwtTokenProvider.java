@@ -68,7 +68,7 @@ public class JwtTokenProvider {
                     .parseClaimsJws(authToken);
             return true;
         } catch (JwtException | IllegalArgumentException e) {
-            log.error("Invalid JWT token: {}", e.getMessage());
+//            log.error("Invalid JWT token: {}", e.getMessage());
         }
         return false;
     }

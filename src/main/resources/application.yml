@@ -7,9 +7,9 @@ spring:
     active: dev
 
   datasource:
-    url : jdbc:postgresql://localhost:5432/postgres
-    username: postgres
-    password: 1234
+    url : jdbc:postgresql://163.44.206.213:5432/devnmdb
+    username: devnm
+    password: devnm123
     driver-class-name: org.postgresql.Driver
 
   jpa:

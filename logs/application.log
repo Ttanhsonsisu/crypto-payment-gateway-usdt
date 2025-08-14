@@ -1,0 +1,90 @@
+2025-08-15 00:42:36 [restartedMain] INFO  c.U.UsdtWallet.UsdtWalletApplication - Starting UsdtWalletApplication using Java 24.0.1 with PID 33728 (C:\Users\Admin\Desktop\cripto-project\UsdtWallet\target\classes started by Admin in C:\Users\Admin\Desktop\cripto-project\UsdtWallet)
+2025-08-15 00:42:36 [restartedMain] DEBUG c.U.UsdtWallet.UsdtWalletApplication - Running with Spring Boot v3.5.4, Spring v6.2.9
+2025-08-15 00:42:36 [restartedMain] INFO  c.U.UsdtWallet.UsdtWalletApplication - The following 1 profile is active: "dev"
+2025-08-15 00:42:36 [restartedMain] INFO  o.s.b.d.e.DevToolsPropertyDefaultsPostProcessor - Devtools property defaults active! Set 'spring.devtools.add-properties' to 'false' to disable
+2025-08-15 00:42:36 [restartedMain] INFO  o.s.b.d.e.DevToolsPropertyDefaultsPostProcessor - For additional web related logging consider setting the 'logging.level.web' property to 'DEBUG'
+2025-08-15 00:42:37 [restartedMain] INFO  o.s.d.r.c.RepositoryConfigurationDelegate - Bootstrapping Spring Data JPA repositories in DEFAULT mode.
+2025-08-15 00:42:37 [restartedMain] INFO  o.s.d.r.c.RepositoryConfigurationDelegate - Finished Spring Data repository scanning in 26 ms. Found 1 JPA repository interface.
+2025-08-15 00:42:37 [restartedMain] INFO  o.s.b.w.e.tomcat.TomcatWebServer - Tomcat initialized with port 8080 (http)
+2025-08-15 00:42:37 [restartedMain] INFO  o.a.catalina.core.StandardService - Starting service [Tomcat]
+2025-08-15 00:42:37 [restartedMain] INFO  o.a.catalina.core.StandardEngine - Starting Servlet engine: [Apache Tomcat/10.1.43]
+2025-08-15 00:42:37 [restartedMain] INFO  o.a.c.c.C.[Tomcat].[localhost].[/] - Initializing Spring embedded WebApplicationContext
+2025-08-15 00:42:37 [restartedMain] INFO  o.s.b.w.s.c.ServletWebServerApplicationContext - Root WebApplicationContext: initialization completed in 1001 ms
+2025-08-15 00:42:37 [restartedMain] ERROR o.s.b.w.e.tomcat.TomcatStarter - Error starting Tomcat context. Exception: org.springframework.beans.factory.UnsatisfiedDependencyException. Message: Error creating bean with name 'jwtAuthenticationFilter': Unsatisfied dependency expressed through field 'userDetailsService': No qualifying bean of type 'org.springframework.security.core.userdetails.UserDetailsService' available: expected at least 1 bean which qualifies as autowire candidate. Dependency annotations: {@org.springframework.beans.factory.annotation.Autowired(required=true)}
+2025-08-15 00:42:37 [restartedMain] INFO  o.a.catalina.core.StandardService - Stopping service [Tomcat]
+2025-08-15 00:42:37 [restartedMain] WARN  o.s.b.w.s.c.AnnotationConfigServletWebServerApplicationContext - Exception encountered during context initialization - cancelling refresh attempt: org.springframework.context.ApplicationContextException: Unable to start web server
+2025-08-15 00:42:37 [restartedMain] INFO  o.s.b.a.l.ConditionEvaluationReportLogger - 
+
+Error starting ApplicationContext. To display the condition evaluation report re-run your application with 'debug' enabled.
+2025-08-15 00:42:37 [restartedMain] ERROR o.s.b.d.LoggingFailureAnalysisReporter - 
+
+***************************
+APPLICATION FAILED TO START
+***************************
+
+Description:
+
+Field userDetailsService in com.UsdtWallet.UsdtWallet.security.JwtAuthenticationFilter required a bean of type 'org.springframework.security.core.userdetails.UserDetailsService' that could not be found.
+
+The injection point has the following annotations:
+	- @org.springframework.beans.factory.annotation.Autowired(required=true)
+
+
+Action:
+
+Consider defining a bean of type 'org.springframework.security.core.userdetails.UserDetailsService' in your configuration.
+
+2025-08-15 00:47:20 [restartedMain] INFO  c.U.UsdtWallet.UsdtWalletApplication - Starting UsdtWalletApplication using Java 24.0.1 with PID 26288 (C:\Users\Admin\Desktop\cripto-project\UsdtWallet\target\classes started by Admin in C:\Users\Admin\Desktop\cripto-project\UsdtWallet)
+2025-08-15 00:47:20 [restartedMain] DEBUG c.U.UsdtWallet.UsdtWalletApplication - Running with Spring Boot v3.5.4, Spring v6.2.9
+2025-08-15 00:47:20 [restartedMain] INFO  c.U.UsdtWallet.UsdtWalletApplication - The following 1 profile is active: "dev"
+2025-08-15 00:47:20 [restartedMain] INFO  o.s.b.d.e.DevToolsPropertyDefaultsPostProcessor - Devtools property defaults active! Set 'spring.devtools.add-properties' to 'false' to disable
+2025-08-15 00:47:20 [restartedMain] INFO  o.s.b.d.e.DevToolsPropertyDefaultsPostProcessor - For additional web related logging consider setting the 'logging.level.web' property to 'DEBUG'
+2025-08-15 00:47:20 [restartedMain] INFO  o.s.d.r.c.RepositoryConfigurationDelegate - Bootstrapping Spring Data JPA repositories in DEFAULT mode.
+2025-08-15 00:47:20 [restartedMain] INFO  o.s.d.r.c.RepositoryConfigurationDelegate - Finished Spring Data repository scanning in 24 ms. Found 1 JPA repository interface.
+2025-08-15 00:47:21 [restartedMain] INFO  o.s.b.w.e.tomcat.TomcatWebServer - Tomcat initialized with port 8080 (http)
+2025-08-15 00:47:21 [restartedMain] INFO  o.a.catalina.core.StandardService - Starting service [Tomcat]
+2025-08-15 00:47:21 [restartedMain] INFO  o.a.catalina.core.StandardEngine - Starting Servlet engine: [Apache Tomcat/10.1.43]
+2025-08-15 00:47:21 [restartedMain] INFO  o.a.c.c.C.[Tomcat].[localhost].[/] - Initializing Spring embedded WebApplicationContext
+2025-08-15 00:47:21 [restartedMain] INFO  o.s.b.w.s.c.ServletWebServerApplicationContext - Root WebApplicationContext: initialization completed in 977 ms
+2025-08-15 00:47:21 [restartedMain] DEBUG c.U.U.s.JwtAuthenticationFilter - Filter 'jwtAuthenticationFilter' configured for use
+2025-08-15 00:47:21 [restartedMain] INFO  o.h.jpa.internal.util.LogHelper - HHH000204: Processing PersistenceUnitInfo [name: default]
+2025-08-15 00:47:21 [restartedMain] INFO  org.hibernate.Version - HHH000412: Hibernate ORM core version 6.6.22.Final
+2025-08-15 00:47:21 [restartedMain] INFO  o.h.c.i.RegionFactoryInitiator - HHH000026: Second-level cache disabled
+2025-08-15 00:47:21 [restartedMain] INFO  o.s.o.j.p.SpringPersistenceUnitInfo - No LoadTimeWeaver setup: ignoring JPA class transformer
+2025-08-15 00:47:21 [restartedMain] INFO  com.zaxxer.hikari.HikariDataSource - HikariPool-1 - Starting...
+2025-08-15 00:47:22 [restartedMain] INFO  com.zaxxer.hikari.pool.HikariPool - HikariPool-1 - Added connection org.postgresql.jdbc.PgConnection@6fdafc69
+2025-08-15 00:47:22 [restartedMain] INFO  com.zaxxer.hikari.HikariDataSource - HikariPool-1 - Start completed.
+2025-08-15 00:47:22 [restartedMain] WARN  org.hibernate.orm.deprecation - HHH90000025: PostgreSQLDialect does not need to be specified explicitly using 'hibernate.dialect' (remove the property setting and it will be selected by default)
+2025-08-15 00:47:22 [restartedMain] INFO  o.hibernate.orm.connections.pooling - HHH10001005: Database info:
+	Database JDBC URL [Connecting through datasource 'HikariDataSource (HikariPool-1)']
+	Database driver: undefined/unknown
+	Database version: 14.18
+	Autocommit mode: undefined/unknown
+	Isolation level: undefined/unknown
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2025-08-15 00:47:23 [restartedMain] INFO  o.h.e.t.j.p.i.JtaPlatformInitiator - HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+2025-08-15 00:47:23 [restartedMain] INFO  o.s.o.j.LocalContainerEntityManagerFactoryBean - Initialized JPA EntityManagerFactory for persistence unit 'default'
+2025-08-15 00:47:23 [restartedMain] INFO  o.s.s.c.a.a.c.InitializeUserDetailsBeanManagerConfigurer$InitializeUserDetailsManagerConfigurer - Global AuthenticationManager configured with UserDetailsService bean with name customUserDetailService
+2025-08-15 00:47:23 [restartedMain] DEBUG o.s.s.a.p.PrePostAnnotationSecurityMetadataSource - @org.springframework.security.access.prepost.PreAuthorize("hasRole('ADMIN')") found on specific method: public org.springframework.http.ResponseEntity com.UsdtWallet.UsdtWallet.controller.UserController.deleteUser(java.lang.Long)
+2025-08-15 00:47:23 [restartedMain] DEBUG o.s.s.a.m.DelegatingMethodSecurityMetadataSource - Caching method [CacheKey[com.UsdtWallet.UsdtWallet.controller.UserController; public org.springframework.http.ResponseEntity com.UsdtWallet.UsdtWallet.controller.UserController.deleteUser(java.lang.Long)]] with attributes [[authorize: 'hasRole('ADMIN')', filter: 'null', filterTarget: 'null']]
+2025-08-15 00:47:23 [restartedMain] DEBUG o.s.s.a.p.PrePostAnnotationSecurityMetadataSource - @org.springframework.security.access.prepost.PreAuthorize("hasRole('ADMIN') or #id == authentication.principal.id") found on specific method: public org.springframework.http.ResponseEntity com.UsdtWallet.UsdtWallet.controller.UserController.updateUser(java.lang.Long,com.UsdtWallet.UsdtWallet.model.dto.request.UserCreateRequest)
+2025-08-15 00:47:23 [restartedMain] DEBUG o.s.s.a.m.DelegatingMethodSecurityMetadataSource - Caching method [CacheKey[com.UsdtWallet.UsdtWallet.controller.UserController; public org.springframework.http.ResponseEntity com.UsdtWallet.UsdtWallet.controller.UserController.updateUser(java.lang.Long,com.UsdtWallet.UsdtWallet.model.dto.request.UserCreateRequest)]] with attributes [[authorize: 'hasRole('ADMIN') or #id == authentication.principal.id', filter: 'null', filterTarget: 'null']]
+2025-08-15 00:47:23 [restartedMain] DEBUG o.s.s.a.p.PrePostAnnotationSecurityMetadataSource - @org.springframework.security.access.prepost.PreAuthorize("hasRole('ADMIN')") found on specific method: public org.springframework.http.ResponseEntity com.UsdtWallet.UsdtWallet.controller.UserController.createUser(com.UsdtWallet.UsdtWallet.model.dto.request.UserCreateRequest) throws org.apache.coyote.BadRequestException
+2025-08-15 00:47:23 [restartedMain] DEBUG o.s.s.a.m.DelegatingMethodSecurityMetadataSource - Caching method [CacheKey[com.UsdtWallet.UsdtWallet.controller.UserController; public org.springframework.http.ResponseEntity com.UsdtWallet.UsdtWallet.controller.UserController.createUser(com.UsdtWallet.UsdtWallet.model.dto.request.UserCreateRequest) throws org.apache.coyote.BadRequestException]] with attributes [[authorize: 'hasRole('ADMIN')', filter: 'null', filterTarget: 'null']]
+2025-08-15 00:47:23 [restartedMain] DEBUG o.s.s.a.p.PrePostAnnotationSecurityMetadataSource - @org.springframework.security.access.prepost.PreAuthorize("hasRole('ADMIN') or #id == authentication.principal.id") found on specific method: public org.springframework.http.ResponseEntity com.UsdtWallet.UsdtWallet.controller.UserController.getUserById(java.util.UUID)
+2025-08-15 00:47:23 [restartedMain] DEBUG o.s.s.a.m.DelegatingMethodSecurityMetadataSource - Caching method [CacheKey[com.UsdtWallet.UsdtWallet.controller.UserController; public org.springframework.http.ResponseEntity com.UsdtWallet.UsdtWallet.controller.UserController.getUserById(java.util.UUID)]] with attributes [[authorize: 'hasRole('ADMIN') or #id == authentication.principal.id', filter: 'null', filterTarget: 'null']]
+2025-08-15 00:47:23 [restartedMain] DEBUG o.s.s.a.p.PrePostAnnotationSecurityMetadataSource - @org.springframework.security.access.prepost.PreAuthorize("hasRole('ADMIN')") found on specific method: public org.springframework.http.ResponseEntity com.UsdtWallet.UsdtWallet.controller.UserController.searchUsers(java.lang.String,int,int)
+2025-08-15 00:47:23 [restartedMain] DEBUG o.s.s.a.m.DelegatingMethodSecurityMetadataSource - Caching method [CacheKey[com.UsdtWallet.UsdtWallet.controller.UserController; public org.springframework.http.ResponseEntity com.UsdtWallet.UsdtWallet.controller.UserController.searchUsers(java.lang.String,int,int)]] with attributes [[authorize: 'hasRole('ADMIN')', filter: 'null', filterTarget: 'null']]
+2025-08-15 00:47:23 [restartedMain] DEBUG o.s.s.a.p.PrePostAnnotationSecurityMetadataSource - @org.springframework.security.access.prepost.PreAuthorize("hasRole('ADMIN')") found on specific method: public org.springframework.http.ResponseEntity com.UsdtWallet.UsdtWallet.controller.UserController.getAllUsers(int,int,java.lang.String,java.lang.String)
+2025-08-15 00:47:23 [restartedMain] DEBUG o.s.s.a.m.DelegatingMethodSecurityMetadataSource - Caching method [CacheKey[com.UsdtWallet.UsdtWallet.controller.UserController; public org.springframework.http.ResponseEntity com.UsdtWallet.UsdtWallet.controller.UserController.getAllUsers(int,int,java.lang.String,java.lang.String)]] with attributes [[authorize: 'hasRole('ADMIN')', filter: 'null', filterTarget: 'null']]
+2025-08-15 00:47:23 [restartedMain] WARN  o.s.b.a.o.j.JpaBaseConfiguration$JpaWebConfiguration - spring.jpa.open-in-view is enabled by default. Therefore, database queries may be performed during view rendering. Explicitly configure spring.jpa.open-in-view to disable this warning
+2025-08-15 00:47:23 [restartedMain] DEBUG o.s.s.web.DefaultSecurityFilterChain - Will secure any request with filters: DisableEncodeUrlFilter, WebAsyncManagerIntegrationFilter, SecurityContextHolderFilter, HeaderWriterFilter, CorsFilter, CsrfFilter, LogoutFilter, JwtAuthenticationFilter, RequestCacheAwareFilter, SecurityContextHolderAwareRequestFilter, AnonymousAuthenticationFilter, ExceptionTranslationFilter
+2025-08-15 00:47:23 [restartedMain] INFO  o.s.b.d.a.OptionalLiveReloadServer - LiveReload server is running on port 35729
+2025-08-15 00:47:23 [restartedMain] INFO  o.s.b.w.e.tomcat.TomcatWebServer - Tomcat started on port 8080 (http) with context path '/'
+2025-08-15 00:47:23 [restartedMain] INFO  c.U.UsdtWallet.UsdtWalletApplication - Started UsdtWalletApplication in 3.806 seconds (process running for 4.272)
+2025-08-15 00:47:31 [SpringApplicationShutdownHook] INFO  o.s.b.w.e.tomcat.GracefulShutdown - Commencing graceful shutdown. Waiting for active requests to complete
+2025-08-15 00:47:31 [tomcat-shutdown] INFO  o.s.b.w.e.tomcat.GracefulShutdown - Graceful shutdown complete
+2025-08-15 00:47:31 [SpringApplicationShutdownHook] INFO  o.s.o.j.LocalContainerEntityManagerFactoryBean - Closing JPA EntityManagerFactory for persistence unit 'default'
+2025-08-15 00:47:31 [SpringApplicationShutdownHook] INFO  com.zaxxer.hikari.HikariDataSource - HikariPool-1 - Shutdown initiated...
+2025-08-15 00:47:31 [SpringApplicationShutdownHook] INFO  com.zaxxer.hikari.HikariDataSource - HikariPool-1 - Shutdown completed.
