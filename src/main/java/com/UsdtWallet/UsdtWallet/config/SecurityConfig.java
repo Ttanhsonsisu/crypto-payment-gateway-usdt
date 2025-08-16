@@ -56,10 +56,9 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         // Mở các endpoint Swagger cho browser
                         .requestMatchers(
-                                "/v3/api-docs/**",
                                 "/swagger-ui/**",
-                                "/swagger-ui.html",
-                                "/api-docs/**",
+                                "/v3/api-docs/**",
+                                "/swagger-resources/**",
                                 "/webjars/**"
                         ).permitAll()
 
@@ -73,21 +72,4 @@ public class SecurityConfig {
         http.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }
-
-//@Bean
-//public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
-//    http
-//            .csrf(csrf -> csrf.disable())
-//            .authorizeHttpRequests(auth -> auth
-//                    .requestMatchers(
-//                            "/swagger-ui/**",
-//                            "/v3/api-docs/**",
-//                            "/swagger-resources/**",
-//                            "/webjars/**"
-//                    ).permitAll()
-//                    .anyRequest().authenticated()
-//            );
-//    return http.build();
-//}
-
 }
