@@ -42,53 +42,52 @@ public class SecurityConfig {
         return authConfig.getAuthenticationManager();
     }
 
-//    @Bean
-//    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
-//        http
-//                .cors(cors -> cors.disable())
-//                .csrf(csrf -> csrf.disable())
-//                .exceptionHandling(ex -> ex
-//                        .authenticationEntryPoint(unauthorizedHandler)
-//                )
-//                .sessionManagement(session -> session
-//                        .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
-//                )
-//                .authorizeHttpRequests(auth -> auth
-//                        // Mở các endpoint Swagger cho browser
-//                        .requestMatchers(
-//                                "/v3/api-docs/**",
-//                                "/swagger-ui/**",
-//                                "/swagger-ui.html",
-//                                "/api-docs/**",
-//                                "/webjars/**"
-//                        ).permitAll()
-//
-//                        // API Auth không yêu cầu token
-//                        .requestMatchers("/api/auth/**").permitAll()
-//
-//                        // Các API khác cần token
-//                        .anyRequest().authenticated()
-//                );
-//// Thêm JWT filter vào trước UsernamePasswordAuthenticationFilter
-//        http.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
-//        return http.build();
-//    }
+    @Bean
+    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+        http
+                .cors(cors -> cors.disable())
+                .csrf(csrf -> csrf.disable())
+                .exceptionHandling(ex -> ex
+                        .authenticationEntryPoint(unauthorizedHandler)
+                )
+                .sessionManagement(session -> session
+                        .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+                )
+                .authorizeHttpRequests(auth -> auth
+                        // Mở các endpoint Swagger cho browser
+                        .requestMatchers(
+                                "/v3/api-docs/**",
+                                "/swagger-ui/**",
+                                "/swagger-ui.html",
+                                "/api-docs/**",
+                                "/webjars/**"
+                        ).permitAll()
 
-@Bean
-public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
-    http
-            .csrf(csrf -> csrf.disable())
-            .authorizeHttpRequests(auth -> auth
-                    .requestMatchers(
-                            "/swagger-ui/**",
-                            "/v3/api-docs/**",
-                            "/swagger-resources/**",
-                            "/webjars/**"
-                    ).permitAll()
-                    .anyRequest().authenticated()
-            );
-    return http.build();
-}
+                        // API Auth không yêu cầu token
+                        .requestMatchers("/api/auth/**").permitAll()
 
+                        // Các API khác cần token
+                        .anyRequest().authenticated()
+                );
+// Thêm JWT filter vào trước UsernamePasswordAuthenticationFilter
+        http.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+        return http.build();
+    }
+
+//@Bean
+//public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+//    http
+//            .csrf(csrf -> csrf.disable())
+//            .authorizeHttpRequests(auth -> auth
+//                    .requestMatchers(
+//                            "/swagger-ui/**",
+//                            "/v3/api-docs/**",
+//                            "/swagger-resources/**",
+//                            "/webjars/**"
+//                    ).permitAll()
+//                    .anyRequest().authenticated()
+//            );
+//    return http.build();
+//}
 
 }

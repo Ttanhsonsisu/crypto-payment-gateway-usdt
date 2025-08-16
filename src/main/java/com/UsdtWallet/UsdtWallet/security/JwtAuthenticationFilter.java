@@ -36,6 +36,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                                     FilterChain filterChain) throws ServletException, IOException {
 
         try {
+            String path = request.getServletPath();
+            // Bỏ qua các endpoint auth
+            if (path.startsWith("/api/auth/")) {
+                filterChain.doFilter(request, response);
+                return;
+            }
+
             String jwt = getJwtFromRequest(request);
 
             if (StringUtils.hasText(jwt) && tokenProvider.validateToken(jwt)) {
@@ -54,6 +61,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             throw new RuntimeException(e);
         }
 
+        filterChain.doFilter(request, response);
     }
 
     private String getJwtFromRequest(HttpServletRequest request) {

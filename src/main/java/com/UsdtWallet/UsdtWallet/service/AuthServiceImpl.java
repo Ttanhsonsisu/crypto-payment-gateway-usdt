@@ -25,7 +25,9 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     public AuthenResponse login(LoginRequest loginRequest) {
-        return null;
+        var resutl = new AuthenResponse();
+        resutl.setTokenType("Bearer");
+        return resutl;
     }
 
     @Override
