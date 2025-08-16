@@ -2,10 +2,10 @@ server:
   port: 8080
   servlet:
     context-path: /
+  #spring:
+  #  profiles:
+  #    active: dev
 spring:
-  profiles:
-    active: dev
-
   datasource:
     url : jdbc:postgresql://163.44.206.213:5432/devnmdb
     username: devnm
@@ -29,11 +29,14 @@ spring:
   sql:
     init:
       mode: always
-#      data-locations: classpath:data.sql # optional when init data struture
+  #      data-locations: classpath:data.sql # optional when init data struture
+#  security:
+#    jwt:
+#      secret: 6ee0722956002f69de212acbe4a300fe58477a38e5f5c1c893ac6407e6936e369d4a428193b024a3d5d8a0ef5ae0f247
+#      expiration: 86400000 # 24 hours
   security:
-    jwt:
-      secret: 6ee0722956002f69de212acbe4a300fe58477a38e5f5c1c893ac6407e6936e369d4a428193b024a3d5d8a0ef5ae0f247
-      expiration: 86400000 # 24 hours
+    secret: 6ee0722956002f69de212acbe4a300fe58477a38e5f5c1c893ac6407e6936e369d4a428193b024a3d5d8a0ef5ae0f247
+    expiration: 86400000 # 24 hours
 
 logging:
   level:
@@ -53,6 +56,14 @@ management:
   endpoint:
     health:
       show-details: when_authorized
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui
+  api-docs:
+    path: /api-docs
+
+
 
 
 

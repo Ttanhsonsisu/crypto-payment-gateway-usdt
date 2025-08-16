@@ -54,5 +54,10 @@ management:
     health:
       show-details: when_authorized
 
+springdoc:
+  swagger-ui:
+    path: /swagger-ui
+  api-docs:
+    path: /api-docs
 
 

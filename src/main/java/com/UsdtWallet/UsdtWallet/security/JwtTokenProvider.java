@@ -16,10 +16,10 @@ import org.springframework.beans.factory.annotation.Value;
 @Component
 @Slf4j
 public class JwtTokenProvider {
-    @Value("${spring.security.jwt.secret}")
+    @Value("${spring.security.secret}")
     private String jwtSecret;
 
-    @Value("${spring.security.jwt.expiration:86400000}")  // 24 hours
+    @Value("${spring.security.expiration}")  // 24 hours
     private Long jwtExpirationInMs;
 
     private SecretKey getSigningKey() {
