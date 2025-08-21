@@ -65,6 +65,11 @@ springdoc:
     enabled: true
 
 
+app:
+  encryption:
+    key: "9f2c4a7e1b8d3f605c7a1d2f8e4b3c9a"
+
+
 
 
 

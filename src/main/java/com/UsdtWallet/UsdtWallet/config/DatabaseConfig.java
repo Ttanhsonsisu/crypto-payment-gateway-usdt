@@ -20,8 +20,7 @@ import javax.sql.DataSource;
 @Slf4j
 public class DatabaseConfig {
 
-    @Autowired
-    private Environment environment;
+    private final Environment environment;
 
     @Bean
     @Profile("dev")

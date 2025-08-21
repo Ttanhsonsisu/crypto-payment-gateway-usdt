@@ -3,6 +3,7 @@ package com.UsdtWallet.UsdtWallet.service;
 import com.UsdtWallet.UsdtWallet.model.dto.request.LoginRequest;
 import com.UsdtWallet.UsdtWallet.model.dto.request.UserCreateRequest;
 import com.UsdtWallet.UsdtWallet.model.dto.response.AuthenResponse;
+import com.UsdtWallet.UsdtWallet.model.entity.User;
 import com.UsdtWallet.UsdtWallet.repository.UserRepository;
 import com.UsdtWallet.UsdtWallet.security.JwtTokenProvider;
 import com.UsdtWallet.UsdtWallet.service.Interface.AuthService;
@@ -32,6 +33,15 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     public AuthenResponse register(UserCreateRequest userCreateRequest) {
+        // validate user data
+
+
+        // save user
+        User user = User.builder()
+                .username(userCreateRequest.getUsername())
+                .password(userCreateRequest.getPassword())
+                .build();
+
         return null;
     }
 
