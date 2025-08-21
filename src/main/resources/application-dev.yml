@@ -1,15 +1,13 @@
 server:
-  port: 8080
+  port: 8081
   servlet:
     context-path: /
-spring:
-  profiles:
-    active: dev
 
+spring:
   datasource:
-    url : jdbc:postgresql://localhost:5432/postgres
-    username: postgres
-    password: 1234
+    url: jdbc:postgresql://163.44.206.213:5432/devnmdb
+    username: devnm
+    password: devnm123
     driver-class-name: org.postgresql.Driver
 
   jpa:
@@ -29,30 +27,49 @@ spring:
   sql:
     init:
       mode: always
-  #      data-locations: classpath:data.sql # optional when init data struture
-  security:
-    jwt:
-      secret: 6ee0722956002f69de212acbe4a300fe58477a38e5f5c1c893ac6407e6936e369d4a428193b024a3d5d8a0ef5ae0f247
-      expiration: 86400000 # 24 hours
 
+  # Redis Configuration for dev
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      timeout: 2000ms
+      jedis:
+        pool:
+          max-active: 8
+          max-wait: -1ms
+          max-idle: 8
+          min-idle: 0
+
+# HD Wallet Configuration for dev
+wallet:
+  mnemonic:
+    seed: ${WALLET_MNEMONIC_SEED:} # Will generate new if empty
+
+  pool:
+    initialSize: 1000  # Generate 1000 child wallets on startup
+    minThreshold: 200  # Minimum free wallets before generating more
+    batchSize: 500     # How many to generate at once when needed
+
+  master:
+    minTrxBalance: 100 # Minimum TRX balance required for master wallet
+
+# Tron Configuration for dev (Nile testnet)
+tron:
+  api:
+    url: https://api.trongrid.io
+  network:
+    name: nile
+    fullHost: https://nile.trongrid.io
+    apiKey: ${TRON_API_KEY:your-api-key-here}
+
+  contracts:
+    usdt: TG3XXyExBkPp9nzdajDZsozEu4BkaSJozs  # USDT on Nile testnet
+
+# Development-specific settings
 logging:
   level:
     com.UsdtWallet.UsdtWallet: DEBUG
     org.springframework.security: DEBUG
-  pattern:
-    console: "%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
-    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
-  file:
-    name: logs/application.log
-
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health,info,metrics,env
-  endpoint:
-    health:
-      show-details: when_authorized
-
-
-
+    org.hibernate.SQL: DEBUG
+    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
