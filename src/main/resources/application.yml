@@ -55,7 +55,7 @@ tron:
   network:
     name: nile
     fullHost: https://nile.trongrid.io
-    apiKey: ${TRON_API_KEY:your-api-key-here}
+    apiKey: ${TRON_API_KEY:bf5a9e49-d910-4283-8a5b-9669d41281b9}
 
   contracts:
     usdt: TG3XXyExBkPp9nzdajDZsozEu4BkaSJozs  # USDT on Nile testnet

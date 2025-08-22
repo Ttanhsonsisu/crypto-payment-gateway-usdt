@@ -57,19 +57,63 @@ wallet:
 # Tron Configuration for dev (Nile testnet)
 tron:
   api:
-    url: https://api.trongrid.io
+    url: https://nile.trongrid.io  # Nile Testnet API
+    key: ${TRON_API_KEY:bf5a9e49-d910-4283-8a5b-9669d41281b9}  # Optional TronGrid API key for higher limits
+
+  usdt:
+    contract: TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf  # USDT TRC20 contract on Nile testnet
+
   network:
     name: nile
-    fullHost: https://nile.trongrid.io
-    apiKey: ${TRON_API_KEY:your-api-key-here}
+    confirmations: 3  # Faster confirmations on testnet
 
-  contracts:
-    usdt: TG3XXyExBkPp9nzdajDZsozEu4BkaSJozs  # USDT on Nile testnet
+# Deposit Scanner Configuration (Optimized for Nile testnet)
+deposit:
+  scanner:
+    enabled: true
+    confirmations:
+      required: 3  # Lower confirmations for testnet
+    block:
+      batch:
+        size: 50  # Smaller batch for faster processing
+    min:
+      amount: 0.1  # Lower minimum for testing (0.1 USDT)
+    schedule:
+      fixed:
+        delay: 15000  # Scan every 15 seconds (faster for testnet)
 
-# Development-specific settings
+# USDT Sweep Configuration (Testnet optimized)
+sweep:
+  enabled: true
+  min:
+    amount: 1  # Lower minimum for testnet (1 USDT)
+  gas:
+    limit: 10  # Lower gas limit for testnet
+  batch:
+    size: 5  # Smaller batches for testing
+  schedule:
+    fixed:
+      delay: 180000  # Sweep every 3 minutes (faster)
+
+# Points System Configuration
+points:
+  exchange:
+    rate: 1.0  # 1 USDT = 1 Point
+  transfer:
+    fee: 0.0  # 0% fee for P2P transfers
+    min:
+      amount: 0.01  # Minimum transfer amount
+  cache:
+    ttl: 600  # Balance cache TTL in seconds (10 minutes)
+
+# Logging
 logging:
   level:
-    com.UsdtWallet.UsdtWallet: DEBUG
-    org.springframework.security: DEBUG
+    com.UsdtWallet: DEBUG
     org.hibernate.SQL: DEBUG
-    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
+    org.springframework.security: DEBUG
+  file:
+    name: logs/application.log
+  pattern:
+    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+    console: "%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"

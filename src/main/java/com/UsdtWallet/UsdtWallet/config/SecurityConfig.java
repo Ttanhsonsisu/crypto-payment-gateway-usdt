@@ -27,6 +27,8 @@ public class SecurityConfig {
                 // Public endpoints - không cần authentication
                 .requestMatchers("/api/auth/**").permitAll()
                 .requestMatchers("/api/admin/wallet/**").permitAll() // Temporary for testing
+                .requestMatchers("/api/test/**").permitAll() // Allow all test endpoints
+
 
                 // Health check endpoints
                 .requestMatchers("/actuator/**").permitAll()
