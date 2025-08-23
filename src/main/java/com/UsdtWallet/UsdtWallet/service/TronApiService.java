@@ -365,10 +365,9 @@ public class TronApiService {
         List<Map<String, Object>> transactions = new ArrayList<>();
 
         try {
-            // Use TronGrid's events API to get TRC20 transfers in block range
-            String url = String.format("%s/v1/contracts/%s/events?event_name=Transfer&min_block_timestamp=%d&max_block_timestamp=%d&limit=200",
-                tronApiUrl, usdtContractAddress,
-                getBlockTimestamp(fromBlock), getBlockTimestamp(toBlock));
+            // Use TronGrid's events API with block numbers instead of timestamps
+            String url = String.format("%s/v1/contracts/%s/events?event_name=Transfer&min_block_number=%d&max_block_number=%d&limit=200",
+                tronApiUrl, usdtContractAddress, fromBlock, toBlock);
 
             HttpHeaders headers = createHeaders();
             HttpEntity<String> entity = new HttpEntity<>(headers);
@@ -380,10 +379,20 @@ public class TronApiService {
                 if (dataObj instanceof List) {
                     List<Map<String, Object>> events = (List<Map<String, Object>>) dataObj;
 
+                    log.debug("TronGrid returned {} events for blocks {}-{}", events.size(), fromBlock, toBlock);
+
                     for (Map<String, Object> event : events) {
                         Map<String, Object> result = (Map<String, Object>) event.get("result");
                         if (result != null) {
                             String toAddress = (String) result.get("to");
+                            Long eventBlockNumber = ((Number) event.get("block_number")).longValue();
+
+                            // CRITICAL FIX: Filter out events outside our requested block range
+                            if (eventBlockNumber < fromBlock || eventBlockNumber > toBlock) {
+                                log.debug("Skipping event from block {} (outside range {}-{})",
+                                    eventBlockNumber, fromBlock, toBlock);
+                                continue;
+                            }
 
                             // Check if this transaction is for one of our addresses
                             if (targetAddresses.contains(toAddress)) {
@@ -392,21 +401,29 @@ public class TronApiService {
                                 txData.put("from", result.get("from"));
                                 txData.put("to", toAddress);
                                 txData.put("value", result.get("value"));
-                                txData.put("block_number", event.get("block_number"));
+                                txData.put("block_number", eventBlockNumber);
                                 txData.put("block_timestamp", event.get("block_timestamp"));
                                 txData.put("token_info", Map.of("address", usdtContractAddress));
 
                                 transactions.add(txData);
+                                
+                                log.debug("Found valid deposit: {} USDT to {} in block {} (within range)",
+                                    new BigDecimal(result.get("value").toString()).divide(new BigDecimal("1000000")),
+                                    toAddress, eventBlockNumber);
                             }
                         }
                     }
                 }
+            } else {
+                log.warn("TronGrid API returned error for blocks {}-{}: {}", 
+                    fromBlock, toBlock, response.getStatusCode());
             }
 
         } catch (Exception e) {
-            log.warn("Error scanning block range {}-{}: {}", fromBlock, toBlock, e.getMessage());
+            log.error("Error scanning block range {}-{}: {}", fromBlock, toBlock, e.getMessage(), e);
         }
 
+        log.debug("Returning {} valid transactions for blocks {}-{}", transactions.size(), fromBlock, toBlock);
         return transactions;
     }
 

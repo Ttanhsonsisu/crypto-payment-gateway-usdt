@@ -337,9 +337,16 @@ public class DepositScannerService {
             return ((Number) value).longValue();
         }
 
-        // If no last block, start from current block minus some blocks
+        // If no last block, start from CURRENT block to avoid rescanning old blocks
         Long currentBlock = tronApiService.getLatestBlockNumber();
-        return currentBlock != null ? currentBlock - 1000 : 0L;
+        if (currentBlock != null) {
+            // Start from current block minus a small buffer for safety
+            Long startBlock = currentBlock - 10; // Only scan last 10 blocks for safety
+            log.info("🔄 First time setup: Starting deposit scanner from block {} (current: {})",
+                startBlock, currentBlock);
+            return startBlock;
+        }
+        return 0L;
     }
 
     /**
