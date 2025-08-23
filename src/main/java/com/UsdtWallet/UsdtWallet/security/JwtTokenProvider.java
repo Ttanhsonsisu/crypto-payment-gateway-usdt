@@ -1,6 +1,5 @@
 package com.UsdtWallet.UsdtWallet.security;
 
-import com.sun.security.auth.UserPrincipal;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
@@ -31,7 +30,7 @@ public class JwtTokenProvider {
         Date expiryDate = new Date(System.currentTimeMillis() + jwtExpirationInMs);
 
         return Jwts.builder()
-                .setSubject(userPrincipal.getName())
+                .setSubject(userPrincipal.getUsername()) // Change from getName() to getUsername()
                 .setIssuedAt(new Date())
                 .setExpiration(expiryDate)
                 .signWith(getSigningKey(), SignatureAlgorithm.HS512)
@@ -43,7 +42,7 @@ public class JwtTokenProvider {
         Date expiryDate = new Date(System.currentTimeMillis() + (jwtExpirationInMs * 7)); // 7 days
 
         return Jwts.builder()
-                .setSubject(userPrincipal.getName())
+                .setSubject(userPrincipal.getUsername()) // Change from getName() to getUsername()
                 .setIssuedAt(new Date())
                 .setExpiration(expiryDate)
                 .signWith(getSigningKey(), SignatureAlgorithm.HS512)

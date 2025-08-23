@@ -5,8 +5,8 @@ import com.UsdtWallet.UsdtWallet.model.entity.HdMasterWallet;
 import com.UsdtWallet.UsdtWallet.repository.ChildWalletPoolRepository;
 import com.UsdtWallet.UsdtWallet.repository.HdMasterWalletRepository;
 import com.UsdtWallet.UsdtWallet.util.TronAddressUtil;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
@@ -22,7 +22,6 @@ import java.util.Map;
 import java.util.UUID;
 
 @Service
-@RequiredArgsConstructor
 @Slf4j
 public class HdWalletService {
 
@@ -51,6 +50,18 @@ public class HdWalletService {
     private BigDecimal minTrxBalance;
 
     private static final String REDIS_ADDRESS_SET_KEY = "child_wallet_addresses";
+
+    // Manual constructor to handle @Qualifier properly
+    public HdWalletService(
+            TronAddressUtil tronAddressUtil,
+            HdMasterWalletRepository masterWalletRepository,
+            ChildWalletPoolRepository childWalletPoolRepository,
+            @Qualifier("customStringRedisTemplate") RedisTemplate<String, String> redisTemplate) {
+        this.tronAddressUtil = tronAddressUtil;
+        this.masterWalletRepository = masterWalletRepository;
+        this.childWalletPoolRepository = childWalletPoolRepository;
+        this.redisTemplate = redisTemplate;
+    }
 
     @PostConstruct
     public void initialize() {

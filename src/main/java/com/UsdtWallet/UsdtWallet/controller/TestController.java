@@ -38,20 +38,20 @@ public class TestController {
             Map<String, Object> networkInfo = tronApiService.getNetworkInfo();
 
             return ResponseEntity.ok(Map.of(
-                "success", true,
-                "message", "Connected to Nile testnet successfully",
-                "data", Map.of(
-                    "currentBlock", currentBlock != null ? currentBlock : "Failed to get",
-                    "networkInfo", networkInfo,
-                    "apiUrl", "https://nile.trongrid.io"
-                )
+                    "success", true,
+                    "message", "Connected to Nile testnet successfully",
+                    "data", Map.of(
+                            "currentBlock", currentBlock != null ? currentBlock : "Failed to get",
+                            "networkInfo", networkInfo,
+                            "apiUrl", "https://nile.trongrid.io"
+                    )
             ));
 
         } catch (Exception e) {
             log.error("Error testing Nile connection", e);
             return ResponseEntity.ok(Map.of(
-                "success", false,
-                "message", "Failed to connect to Nile testnet: " + e.getMessage()
+                    "success", false,
+                    "message", "Failed to connect to Nile testnet: " + e.getMessage()
             ));
         }
     }
@@ -68,20 +68,20 @@ public class TestController {
             BigDecimal usdtBalance = tronApiService.getUsdtBalance(masterAddress);
 
             return ResponseEntity.ok(Map.of(
-                "success", true,
-                "data", Map.of(
-                    "masterAddress", masterAddress,
-                    "trxBalance", trxBalance + " TRX",
-                    "usdtBalance", usdtBalance + " USDT",
-                    "network", "Nile Testnet"
-                )
+                    "success", true,
+                    "data", Map.of(
+                            "masterAddress", masterAddress,
+                            "trxBalance", trxBalance + " TRX",
+                            "usdtBalance", usdtBalance + " USDT",
+                            "network", "Nile Testnet"
+                    )
             ));
 
         } catch (Exception e) {
             log.error("Error getting master wallet balance", e);
             return ResponseEntity.ok(Map.of(
-                "success", false,
-                "message", "Failed to get master wallet balance: " + e.getMessage()
+                    "success", false,
+                    "message", "Failed to get master wallet balance: " + e.getMessage()
             ));
         }
     }
@@ -96,19 +96,19 @@ public class TestController {
 
             // This would test the child wallet generation logic
             return ResponseEntity.ok(Map.of(
-                "success", true,
-                "message", "Child wallet generation test completed",
-                "data", Map.of(
-                    "requestedCount", count,
-                    "note", "Check logs for detailed wallet generation process"
-                )
+                    "success", true,
+                    "message", "Child wallet generation test completed",
+                    "data", Map.of(
+                            "requestedCount", count,
+                            "note", "Check logs for detailed wallet generation process"
+                    )
             ));
 
         } catch (Exception e) {
             log.error("Error testing child wallet generation", e);
             return ResponseEntity.ok(Map.of(
-                "success", false,
-                "message", "Failed to test child wallet generation: " + e.getMessage()
+                    "success", false,
+                    "message", "Failed to test child wallet generation: " + e.getMessage()
             ));
         }
     }
@@ -125,8 +125,8 @@ public class TestController {
             Long currentBlock = tronApiService.getLatestBlockNumber();
             if (currentBlock == null) {
                 return ResponseEntity.ok(Map.of(
-                    "success", false,
-                    "message", "Failed to get current block number"
+                        "success", false,
+                        "message", "Failed to get current block number"
                 ));
             }
 
@@ -141,22 +141,22 @@ public class TestController {
             }
 
             return ResponseEntity.ok(Map.of(
-                "success", true,
-                "message", "Deposit scanning test completed",
-                "data", Map.of(
-                    "scannedBlocks", blockRange,
-                    "fromBlock", fromBlock,
-                    "toBlock", toBlock,
-                    "depositsFound", depositsFound,
-                    "scannedAddress", address != null ? address : "All child wallets"
-                )
+                    "success", true,
+                    "message", "Deposit scanning test completed",
+                    "data", Map.of(
+                            "scannedBlocks", blockRange,
+                            "fromBlock", fromBlock,
+                            "toBlock", toBlock,
+                            "depositsFound", depositsFound,
+                            "scannedAddress", address != null ? address : "All child wallets"
+                    )
             ));
 
         } catch (Exception e) {
             log.error("Error testing deposit scanning", e);
             return ResponseEntity.ok(Map.of(
-                "success", false,
-                "message", "Failed to test deposit scanning: " + e.getMessage()
+                    "success", false,
+                    "message", "Failed to test deposit scanning: " + e.getMessage()
             ));
         }
     }
@@ -175,29 +175,29 @@ public class TestController {
 
             // Test credit points
             boolean credited = pointsService.creditPointsForDeposit(
-                userId, amount, "test-tx-" + System.currentTimeMillis(), amount);
+                    userId, amount, "test-tx-" + System.currentTimeMillis(), amount);
 
             // Test balance after
             BigDecimal balanceAfter = pointsService.getCurrentBalance(userId);
 
             return ResponseEntity.ok(Map.of(
-                "success", true,
-                "message", "Points system test completed",
-                "data", Map.of(
-                    "userId", userId,
-                    "testedAmount", amount,
-                    "balanceBefore", balanceBefore,
-                    "balanceAfter", balanceAfter,
-                    "creditedSuccessfully", credited,
-                    "balanceIncrease", balanceAfter.subtract(balanceBefore)
-                )
+                    "success", true,
+                    "message", "Points system test completed",
+                    "data", Map.of(
+                            "userId", userId,
+                            "testedAmount", amount,
+                            "balanceBefore", balanceBefore,
+                            "balanceAfter", balanceAfter,
+                            "creditedSuccessfully", credited,
+                            "balanceIncrease", balanceAfter.subtract(balanceBefore)
+                    )
             ));
 
         } catch (Exception e) {
             log.error("Error testing points system", e);
             return ResponseEntity.ok(Map.of(
-                "success", false,
-                "message", "Failed to test points system: " + e.getMessage()
+                    "success", false,
+                    "message", "Failed to test points system: " + e.getMessage()
             ));
         }
     }
@@ -224,30 +224,30 @@ public class TestController {
             BigDecimal toBalanceAfter = pointsService.getCurrentBalance(toUserId);
 
             return ResponseEntity.ok(Map.of(
-                "success", success,
-                "message", success ? "P2P transfer test completed successfully" : "P2P transfer failed",
-                "data", Map.of(
-                    "transferAmount", amount,
-                    "fromUser", Map.of(
-                        "userId", fromUserId,
-                        "balanceBefore", fromBalanceBefore,
-                        "balanceAfter", fromBalanceAfter,
-                        "change", fromBalanceAfter.subtract(fromBalanceBefore)
-                    ),
-                    "toUser", Map.of(
-                        "userId", toUserId,
-                        "balanceBefore", toBalanceBefore,
-                        "balanceAfter", toBalanceAfter,
-                        "change", toBalanceAfter.subtract(toBalanceBefore)
+                    "success", success,
+                    "message", success ? "P2P transfer test completed successfully" : "P2P transfer failed",
+                    "data", Map.of(
+                            "transferAmount", amount,
+                            "fromUser", Map.of(
+                                    "userId", fromUserId,
+                                    "balanceBefore", fromBalanceBefore,
+                                    "balanceAfter", fromBalanceAfter,
+                                    "change", fromBalanceAfter.subtract(fromBalanceBefore)
+                            ),
+                            "toUser", Map.of(
+                                    "userId", toUserId,
+                                    "balanceBefore", toBalanceBefore,
+                                    "balanceAfter", toBalanceAfter,
+                                    "change", toBalanceAfter.subtract(toBalanceBefore)
+                            )
                     )
-                )
             ));
 
         } catch (Exception e) {
             log.error("Error testing P2P transfer", e);
             return ResponseEntity.ok(Map.of(
-                "success", false,
-                "message", "Failed to test P2P transfer: " + e.getMessage()
+                    "success", false,
+                    "message", "Failed to test P2P transfer: " + e.getMessage()
             ));
         }
     }
@@ -268,23 +268,23 @@ public class TestController {
             // HdWalletService.PoolStats poolStats = hdWalletService.getPoolStats();
 
             return ResponseEntity.ok(Map.of(
-                "success", true,
-                "data", Map.of(
-                    "network", "Nile Testnet",
-                    "scanning", scanStats,
-                    "sweep", sweepStats,
-                    "walletPool", Map.of(
-                        "note", "Wallet pool stats available through separate endpoint",
-                        "status", "Available"
+                    "success", true,
+                    "data", Map.of(
+                            "network", "Nile Testnet",
+                            "scanning", scanStats,
+                            "sweep", sweepStats,
+                            "walletPool", Map.of(
+                                    "note", "Wallet pool stats available through separate endpoint",
+                                    "status", "Available"
+                            )
                     )
-                )
             ));
 
         } catch (Exception e) {
             log.error("Error getting system overview", e);
             return ResponseEntity.ok(Map.of(
-                "success", false,
-                "message", "Failed to get system overview: " + e.getMessage()
+                    "success", false,
+                    "message", "Failed to get system overview: " + e.getMessage()
             ));
         }
     }
@@ -295,22 +295,22 @@ public class TestController {
     @GetMapping("/health")
     public ResponseEntity<Map<String, Object>> healthCheck() {
         Map<String, Object> health = Map.of(
-            "tronApi", testServiceHealth("TronAPI", () -> tronApiService.getLatestBlockNumber() != null),
-            "database", testServiceHealth("Database", () -> true), // Would check DB connection
-            "redis", testServiceHealth("Redis", () -> true), // Would check Redis connection
-            "depositScanner", testServiceHealth("DepositScanner", () -> true),
-            "sweepService", testServiceHealth("SweepService", () -> true),
-            "pointsService", testServiceHealth("PointsService", () -> true)
+                "tronApi", testServiceHealth("TronAPI", () -> tronApiService.getLatestBlockNumber() != null),
+                "database", testServiceHealth("Database", () -> true), // Would check DB connection
+                "redis", testServiceHealth("Redis", () -> true), // Would check Redis connection
+                "depositScanner", testServiceHealth("DepositScanner", () -> true),
+                "sweepService", testServiceHealth("SweepService", () -> true),
+                "pointsService", testServiceHealth("PointsService", () -> true)
         );
 
         boolean allHealthy = health.values().stream()
-            .allMatch(status -> "healthy".equals(((Map<String, Object>) status).get("status")));
+                .allMatch(status -> "healthy".equals(((Map<String, Object>) status).get("status")));
 
         return ResponseEntity.ok(Map.of(
-            "success", true,
-            "overallStatus", allHealthy ? "healthy" : "degraded",
-            "services", health,
-            "timestamp", System.currentTimeMillis()
+                "success", true,
+                "overallStatus", allHealthy ? "healthy" : "degraded",
+                "services", health,
+                "timestamp", System.currentTimeMillis()
         ));
     }
 
@@ -318,13 +318,13 @@ public class TestController {
         try {
             boolean healthy = checker.check();
             return Map.of(
-                "status", healthy ? "healthy" : "unhealthy",
-                "message", healthy ? "Service is operational" : "Service check failed"
+                    "status", healthy ? "healthy" : "unhealthy",
+                    "message", healthy ? "Service is operational" : "Service check failed"
             );
         } catch (Exception e) {
             return Map.of(
-                "status", "error",
-                "message", e.getMessage()
+                    "status", "error",
+                    "message", e.getMessage()
             );
         }
     }
@@ -332,5 +332,72 @@ public class TestController {
     @FunctionalInterface
     private interface HealthChecker {
         boolean check() throws Exception;
+    }
+
+    /**
+     * Get deposit scanning statistics (public endpoint for testing)
+     */
+    @GetMapping("/deposit/scan/stats")
+    public ResponseEntity<Map<String, Object>> getDepositScanStats() {
+        try {
+            Map<String, Object> stats = depositScannerService.getScanningStats();
+
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "message", "Deposit scanner statistics retrieved successfully",
+                    "data", stats,
+                    "metadata", Map.of(
+                            "network", "Nile Testnet",
+                            "timestamp", System.currentTimeMillis(),
+                            "endpoint", "/api/test/deposit/scan/stats"
+                    )
+            ));
+
+        } catch (Exception e) {
+            log.error("Error getting deposit scan stats", e);
+            return ResponseEntity.ok(Map.of(
+                    "success", false,
+                    "message", "Failed to get deposit scan stats: " + e.getMessage(),
+                    "error", e.getClass().getSimpleName()
+            ));
+        }
+    }
+
+    /**
+     * Reset scan position to current block - 50 (for testing and deployment)
+     */
+    @PostMapping("/deposit/scan/reset")
+    public ResponseEntity<Map<String, Object>> resetScanPosition() {
+        try {
+            Long currentBlock = tronApiService.getLatestBlockNumber();
+            if (currentBlock == null) {
+                return ResponseEntity.ok(Map.of(
+                        "success", false,
+                        "message", "Failed to get current block number"
+                ));
+            }
+
+            // Reset to current block - 50 for fresh scanning
+            Long newScanPosition = currentBlock - 50;
+            depositScannerService.resetScanPosition(newScanPosition);
+
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "message", "Scan position reset successfully",
+                    "data", Map.of(
+                            "currentBlock", currentBlock,
+                            "newScanPosition", newScanPosition,
+                            "blocksToScan", 50,
+                            "reason", "Reset for fresh scanning from recent blocks"
+                    )
+            ));
+
+        } catch (Exception e) {
+            log.error("Error resetting scan position", e);
+            return ResponseEntity.ok(Map.of(
+                    "success", false,
+                    "message", "Failed to reset scan position: " + e.getMessage()
+            ));
+        }
     }
 }

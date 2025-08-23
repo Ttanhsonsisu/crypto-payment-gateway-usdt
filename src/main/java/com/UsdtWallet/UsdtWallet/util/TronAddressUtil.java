@@ -127,8 +127,8 @@ public class TronAddressUtil {
             System.arraycopy(input, 0, addressWithChecksum, 0, input.length);
             System.arraycopy(checksum, 0, addressWithChecksum, input.length, 4);
 
-            // Base58 encode
-            return base58Encode(addressWithChecksum);
+            // Base58 encode (use simple version without double checksum)
+            return base58EncodeSimple(addressWithChecksum);
 
         } catch (Exception e) {
             throw new RuntimeException("Failed to base58check encode", e);
@@ -136,9 +136,9 @@ public class TronAddressUtil {
     }
 
     /**
-     * Base58 encoding
+     * Simple Base58 encoding (without additional checksum)
      */
-    private String base58Encode(byte[] input) {
+    private static String base58EncodeSimple(byte[] input) {
         if (input.length == 0) {
             return "";
         }
@@ -172,6 +172,24 @@ public class TronAddressUtil {
     }
 
     /**
+     * Base58 encode with checksum (for static utility methods)
+     */
+    private static String base58Encode(byte[] input) {
+        // Calculate checksum
+        byte[] hash1 = sha256(input);
+        byte[] hash2 = sha256(hash1);
+        byte[] checksum = Arrays.copyOfRange(hash2, 0, 4);
+
+        // Append checksum
+        byte[] inputWithChecksum = new byte[input.length + checksum.length];
+        System.arraycopy(input, 0, inputWithChecksum, 0, input.length);
+        System.arraycopy(checksum, 0, inputWithChecksum, input.length, checksum.length);
+
+        // Use simple encoding
+        return base58EncodeSimple(inputWithChecksum);
+    }
+
+    /**
      * Get private key as hex string
      */
     public String getPrivateKeyHex(DeterministicKey key) {
@@ -188,6 +206,102 @@ public class TronAddressUtil {
         String privateKey = getPrivateKeyHex(childKey);
 
         return new WalletInfo(index, address, privateKey);
+    }
+
+    /**
+     * Convert Tron Base58 address to Hex format (for API calls)
+     * T... -> 0x...
+     */
+    public static String base58ToHex(String base58Address) {
+        try {
+            if (base58Address == null || !base58Address.startsWith("T")) {
+                return base58Address;
+            }
+
+            byte[] decoded = base58Decode(base58Address);
+            // Remove the first byte (0x41 for Tron) and last 4 bytes (checksum)
+            byte[] addressBytes = Arrays.copyOfRange(decoded, 1, decoded.length - 4);
+            return "0x" + Hex.toHexString(addressBytes);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to convert Base58 to Hex: " + base58Address, e);
+        }
+    }
+
+    /**
+     * Convert Hex address to Tron Base58 format (for storage)
+     * 0x... -> T...
+     */
+    public static String hexToBase58(String hexAddress) {
+        try {
+            if (hexAddress == null || !hexAddress.startsWith("0x")) {
+                return hexAddress;
+            }
+
+            // Remove 0x prefix
+            String hex = hexAddress.substring(2);
+            byte[] addressBytes = Hex.decode(hex);
+
+            // Add Tron prefix (0x41)
+            byte[] fullAddress = new byte[addressBytes.length + 1];
+            fullAddress[0] = 0x41;
+            System.arraycopy(addressBytes, 0, fullAddress, 1, addressBytes.length);
+
+            return base58Encode(fullAddress);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to convert Hex to Base58: " + hexAddress, e);
+        }
+    }
+
+    /**
+     * Base58 decode implementation
+     */
+    private static byte[] base58Decode(String input) {
+        if (input.length() == 0) {
+            return new byte[0];
+        }
+
+        // Convert to big integer
+        BigInteger decoded = BigInteger.ZERO;
+        BigInteger multi = BigInteger.ONE;
+        char[] chars = input.toCharArray();
+
+        for (int i = chars.length - 1; i >= 0; i--) {
+            int digit = ALPHABET.indexOf(chars[i]);
+            if (digit == -1) {
+                throw new IllegalArgumentException("Invalid Base58 character: " + chars[i]);
+            }
+            decoded = decoded.add(multi.multiply(BigInteger.valueOf(digit)));
+            multi = multi.multiply(BigInteger.valueOf(58));
+        }
+
+        byte[] result = decoded.toByteArray();
+
+        // Handle leading zeros
+        int leadingZeros = 0;
+        for (char c : chars) {
+            if (c == '1') leadingZeros++;
+            else break;
+        }
+
+        if (leadingZeros > 0) {
+            byte[] withZeros = new byte[result.length + leadingZeros];
+            System.arraycopy(result, 0, withZeros, leadingZeros, result.length);
+            return withZeros;
+        }
+
+        return result;
+    }
+
+    /**
+     * SHA256 hash
+     */
+    private static byte[] sha256(byte[] input) {
+        try {
+            java.security.MessageDigest digest = java.security.MessageDigest.getInstance("SHA-256");
+            return digest.digest(input);
+        } catch (Exception e) {
+            throw new RuntimeException("SHA256 failed", e);
+        }
     }
 
     /**

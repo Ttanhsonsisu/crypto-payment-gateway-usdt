@@ -1,14 +1,17 @@
 package com.UsdtWallet.UsdtWallet.controller;
 
 import com.UsdtWallet.UsdtWallet.model.dto.request.UserRegistrationRequest;
+import com.UsdtWallet.UsdtWallet.model.dto.request.LoginRequest;
 import com.UsdtWallet.UsdtWallet.model.dto.response.ApiResponse;
 import com.UsdtWallet.UsdtWallet.model.dto.response.UserRegistrationResponse;
 import com.UsdtWallet.UsdtWallet.model.entity.User;
+import com.UsdtWallet.UsdtWallet.security.UserPrincipal;
 import com.UsdtWallet.UsdtWallet.service.UserService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
@@ -185,6 +188,49 @@ public class UserController {
                 .body(ApiResponse.<Map<String, Object>>builder()
                     .success(false)
                     .message("Failed to get user info: " + e.getMessage())
+                    .build());
+        }
+    }
+
+    /**
+     * User login
+     */
+    @PostMapping("/login")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> login(
+            @Valid @RequestBody LoginRequest request) {
+        try {
+            log.info("Login attempt for username: {}", request.getUsername());
+
+            Map<String, Object> response = userService.login(request.getUsername(), request.getPassword());
+
+            log.info("Login successful for user: {}", request.getUsername());
+            return ResponseEntity.ok(ApiResponse.success("Login successful", response));
+
+        } catch (Exception e) {
+            log.error("Login failed for username: {}", request.getUsername(), e);
+            return ResponseEntity.badRequest()
+                .body(ApiResponse.<Map<String, Object>>builder()
+                    .success(false)
+                    .message("Login failed: " + e.getMessage())
+                    .build());
+        }
+    }
+
+    /**
+     * Get current user profile
+     */
+    @GetMapping("/profile")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getUserProfile(
+            @AuthenticationPrincipal UserPrincipal userPrincipal) {
+        try {
+            Map<String, Object> userInfo = userService.getUserInfo(userPrincipal.getId().toString());
+            return ResponseEntity.ok(ApiResponse.success(userInfo));
+        } catch (Exception e) {
+            log.error("Error getting user profile", e);
+            return ResponseEntity.badRequest()
+                .body(ApiResponse.<Map<String, Object>>builder()
+                    .success(false)
+                    .message("Failed to get profile: " + e.getMessage())
                     .build());
         }
     }

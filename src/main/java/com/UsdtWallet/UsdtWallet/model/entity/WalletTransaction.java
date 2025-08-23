@@ -20,8 +20,8 @@ import java.time.LocalDateTime;
 public class WalletTransaction {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
-    private String id;
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
 
     @Column(name = "tx_hash", unique = true, nullable = false)
     private String txHash;
@@ -51,6 +51,10 @@ public class WalletTransaction {
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)
     private TransactionStatus status;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "direction", nullable = false)
+    private TransactionDirection direction;
 
     @Column(name = "user_id")
     private String userId; // User who owns the wallet
@@ -104,5 +108,10 @@ public class WalletTransaction {
         FAILED,
         PROCESSING,
         COMPLETED
+    }
+
+    public enum TransactionDirection {
+        IN,
+        OUT
     }
 }

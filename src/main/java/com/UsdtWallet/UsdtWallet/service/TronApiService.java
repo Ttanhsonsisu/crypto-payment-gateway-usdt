@@ -1,5 +1,6 @@
 package com.UsdtWallet.UsdtWallet.service;
 
+import com.UsdtWallet.UsdtWallet.util.TronAddressUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -9,9 +10,12 @@ import org.springframework.web.client.RestTemplate;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -310,5 +314,110 @@ public class TronApiService {
             log.error("Error requesting faucet TRX", e);
             return false;
         }
+    }
+
+    /**
+     * Get transactions in range - OPTIMIZED VERSION
+     * Instead of scanning each address individually, scan blocks and filter
+     */
+    public List<Map<String, Object>> getTransactionsInRangeOptimized(
+            List<String> addresses, Long fromBlock, Long toBlock) {
+
+        List<Map<String, Object>> allTransactions = new ArrayList<>();
+
+        try {
+            // Convert addresses to Set for faster lookup
+            Set<String> addressSet = new HashSet<>();
+            for (String addr : addresses) {
+                // Add both Base58 and Hex formats for comprehensive matching
+                addressSet.add(addr);
+                addressSet.add(TronAddressUtil.base58ToHex(addr));
+            }
+
+            log.debug("Optimized scan: {} addresses, blocks {}-{}",
+                addresses.size(), fromBlock, toBlock);
+
+            // Scan blocks in batches to find relevant transactions
+            long batchSize = 10; // Scan 10 blocks at a time
+            for (long startBlock = fromBlock; startBlock <= toBlock; startBlock += batchSize) {
+                long endBlock = Math.min(startBlock + batchSize - 1, toBlock);
+
+                List<Map<String, Object>> blockTransactions =
+                    getTransactionsFromBlockRange(startBlock, endBlock, addressSet);
+                allTransactions.addAll(blockTransactions);
+            }
+
+            log.debug("Found {} transactions in optimized scan", allTransactions.size());
+
+        } catch (Exception e) {
+            log.error("Error in optimized transaction scanning", e);
+        }
+
+        return allTransactions;
+    }
+
+    /**
+     * Scan specific block range for transactions involving our addresses
+     */
+    private List<Map<String, Object>> getTransactionsFromBlockRange(
+            long fromBlock, long toBlock, Set<String> targetAddresses) {
+
+        List<Map<String, Object>> transactions = new ArrayList<>();
+
+        try {
+            // Use TronGrid's events API to get TRC20 transfers in block range
+            String url = String.format("%s/v1/contracts/%s/events?event_name=Transfer&min_block_timestamp=%d&max_block_timestamp=%d&limit=200",
+                tronApiUrl, usdtContractAddress,
+                getBlockTimestamp(fromBlock), getBlockTimestamp(toBlock));
+
+            HttpHeaders headers = createHeaders();
+            HttpEntity<String> entity = new HttpEntity<>(headers);
+
+            ResponseEntity<Map> response = restTemplate.exchange(url, HttpMethod.GET, entity, Map.class);
+
+            if (response.getStatusCode() == HttpStatus.OK && response.getBody() != null) {
+                Object dataObj = response.getBody().get("data");
+                if (dataObj instanceof List) {
+                    List<Map<String, Object>> events = (List<Map<String, Object>>) dataObj;
+
+                    for (Map<String, Object> event : events) {
+                        Map<String, Object> result = (Map<String, Object>) event.get("result");
+                        if (result != null) {
+                            String toAddress = (String) result.get("to");
+
+                            // Check if this transaction is for one of our addresses
+                            if (targetAddresses.contains(toAddress)) {
+                                Map<String, Object> txData = new HashMap<>();
+                                txData.put("transaction_id", event.get("transaction_id"));
+                                txData.put("from", result.get("from"));
+                                txData.put("to", toAddress);
+                                txData.put("value", result.get("value"));
+                                txData.put("block_number", event.get("block_number"));
+                                txData.put("block_timestamp", event.get("block_timestamp"));
+                                txData.put("token_info", Map.of("address", usdtContractAddress));
+
+                                transactions.add(txData);
+                            }
+                        }
+                    }
+                }
+            }
+
+        } catch (Exception e) {
+            log.warn("Error scanning block range {}-{}: {}", fromBlock, toBlock, e.getMessage());
+        }
+
+        return transactions;
+    }
+
+    /**
+     * Get approximate timestamp for a block number
+     */
+    private long getBlockTimestamp(long blockNumber) {
+        // Tron blocks are ~3 seconds apart, estimate timestamp
+        long currentTime = System.currentTimeMillis();
+        long currentBlock = getLatestBlockNumber();
+        long blockDiff = currentBlock - blockNumber;
+        return currentTime - (blockDiff * 3000); // 3 seconds per block
     }
 }

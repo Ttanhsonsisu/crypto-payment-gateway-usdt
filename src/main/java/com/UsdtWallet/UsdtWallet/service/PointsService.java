@@ -50,6 +50,7 @@ public class PointsService {
             BigDecimal newBalance = currentBalance.add(pointsAmount);
 
             PointsLedger ledgerEntry = PointsLedger.builder()
+                .id(java.util.UUID.randomUUID().toString()) // THÊM DÒNG NÀY
                 .userId(userId)
                 .transactionId(transactionId)
                 .transactionType(PointsLedger.PointsTransactionType.DEPOSIT_CREDIT)
