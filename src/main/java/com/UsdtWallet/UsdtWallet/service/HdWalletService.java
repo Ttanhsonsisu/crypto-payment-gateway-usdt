@@ -50,6 +50,7 @@ public class HdWalletService {
     private BigDecimal minTrxBalance;
 
     private static final String REDIS_ADDRESS_SET_KEY = "child_wallet_addresses";
+    private static final String REDIS_ADDRESS_INDEX_KEY = "child_wallet_address_index";
 
     // Manual constructor to handle @Qualifier properly
     public HdWalletService(
@@ -377,5 +378,28 @@ public class HdWalletService {
     private String decryptMnemonic(String encryptedMnemonic) {
         // TODO: Implement proper AES decryption or use HSM/Vault
         return encryptedMnemonic.replace("encrypted_", "");
+    }
+
+    /**
+     * Get private key for child wallet address
+     */
+    public String getPrivateKeyForAddress(String address) {
+        try {
+            // Get wallet info from database
+            Optional<ChildWalletPool> walletOpt = childWalletPoolRepository.findByAddress(address);
+            if (walletOpt.isEmpty()) {
+                throw new RuntimeException("Child wallet not found: " + address);
+            }
+
+            ChildWalletPool wallet = walletOpt.get();
+            int index = wallet.getDerivationIndex();
+
+            log.debug("Getting private key for address {} at index {}", address, index);
+            return getPrivateKeyForIndex(index);
+
+        } catch (Exception e) {
+            log.error("Error getting private key for address {}: {}", address, e.getMessage());
+            throw new RuntimeException("Failed to get private key for address: " + address);
+        }
     }
 }

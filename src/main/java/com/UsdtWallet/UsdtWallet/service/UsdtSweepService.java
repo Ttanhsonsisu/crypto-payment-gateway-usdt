@@ -43,7 +43,7 @@ public class UsdtSweepService {
     @Value("${sweep.enabled:true}")
     private Boolean sweepEnabled;
 
-    @Value("${tron.usdt.contract:TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t}")
+    @Value("${tron.usdt.contract:TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf}")
     private String usdtContractAddress;
 
     private static final String SWEEP_LOCK_KEY = "sweep:lock";
@@ -201,10 +201,10 @@ public class UsdtSweepService {
 
             log.info("🧹 Sweeping {} USDT from {} to master wallet", amount, fromAddress);
 
-            // Check current USDT balance of child wallet
-            BigDecimal currentBalance = tronApiService.getUsdtBalance(fromAddress);
-            if (currentBalance.compareTo(amount) < 0) {
-                String error = String.format("Insufficient balance. Expected: %s, Current: %s", amount, currentBalance);
+            // 1. Check current USDT balance of child wallet
+            BigDecimal currentUsdtBalance = tronApiService.getUsdtBalance(fromAddress);
+            if (currentUsdtBalance.compareTo(amount) < 0) {
+                String error = String.format("Insufficient USDT balance. Expected: %s, Current: %s", amount, currentUsdtBalance);
                 log.warn(error);
 
                 return SweepResultDto.SweepTransactionDto.builder()
@@ -215,45 +215,93 @@ public class UsdtSweepService {
                     .build();
             }
 
-            // Get private key for child wallet - simplified for now
-            // TronAddressUtil.WalletInfo walletInfo = hdWalletService.getChildWalletInfo(fromAddress);
-            // For now, we'll skip the actual private key operations
-            log.warn("Sweep transaction creation is placeholder - needs TronWeb integration");
-
-            // Check TRX balance for gas
+            // 2. Check TRX balance for gas fees
             BigDecimal trxBalance = tronApiService.getTrxBalance(fromAddress);
+            log.debug("Child wallet TRX balance: {} TRX, Required gas: {} TRX", trxBalance, gasLimitTrx);
+
             if (trxBalance.compareTo(gasLimitTrx) < 0) {
-                // Need to send TRX for gas first
-                boolean gasSent = sendGasToChildWallet(fromAddress, gasLimitTrx);
-                if (!gasSent) {
-                    throw new RuntimeException("Failed to send gas to child wallet");
+                log.info("⛽ Child wallet needs TRX for gas. Current: {} TRX, Required: {} TRX",
+                    trxBalance, gasLimitTrx);
+
+                // Check master wallet TRX balance
+                BigDecimal masterTrxBalance = tronApiService.getTrxBalance(masterAddress);
+                if (masterTrxBalance.compareTo(gasLimitTrx) < 0) {
+                    String error = String.format("Master wallet insufficient TRX for gas. Available: %s, Required: %s",
+                        masterTrxBalance, gasLimitTrx);
+                    log.error("❌ " + error);
+
+                    return SweepResultDto.SweepTransactionDto.builder()
+                        .fromAddress(fromAddress)
+                        .amount(amount)
+                        .status("FAILED")
+                        .errorMessage(error)
+                        .build();
                 }
 
-                // Wait a bit for gas transaction to confirm
-                Thread.sleep(3000);
+                // Send TRX for gas first
+                boolean gasSent = sendGasToChildWallet(fromAddress, gasLimitTrx);
+                if (!gasSent) {
+                    String error = "Failed to send TRX gas to child wallet";
+                    log.error("❌ " + error);
+
+                    return SweepResultDto.SweepTransactionDto.builder()
+                        .fromAddress(fromAddress)
+                        .amount(amount)
+                        .status("FAILED")
+                        .errorMessage(error)
+                        .build();
+                }
+
+                // Wait for gas transaction to confirm with retry logic
+                log.info("⏳ Waiting for gas transaction to confirm...");
+
+                if (!waitForGasConfirmation(fromAddress, gasLimitTrx, 60)) {
+                    String error = String.format("Gas transaction not confirmed after 60 seconds. Current balance: %s TRX",
+                        tronApiService.getTrxBalance(fromAddress));
+                    log.warn("⚠️ " + error);
+
+                    return SweepResultDto.SweepTransactionDto.builder()
+                        .fromAddress(fromAddress)
+                        .amount(amount)
+                        .status("FAILED")
+                        .errorMessage(error)
+                        .build();
+                }
+
+                log.info("✅ Gas successfully sent and confirmed. New balance: {} TRX", trxBalance);
             }
 
-            // Create and sign USDT transfer transaction (placeholder)
-            String rawTransaction = createUsdtTransferTransaction(
-                "placeholder_private_key",
-                fromAddress,
-                masterAddress,
-                amount
-            );
+            // 3. Create and sign USDT transfer transaction (using TronGrid API)
+            log.info("🚀 Creating USDT transfer transaction on TronGrid");
 
-            // Broadcast transaction
-            String txHash = tronApiService.broadcastTransaction(rawTransaction);
+            // Get private key for child wallet
+            String childPrivateKey = hdWalletService.getPrivateKeyForAddress(fromAddress);
+
+            String rawTransaction = tronApiService.createUsdtTransferTransaction(fromAddress, masterAddress, amount);
+            if (rawTransaction == null) {
+                throw new RuntimeException("Failed to create USDT transaction");
+            }
+
+            // Sign the transaction with real private key
+            String signedTransaction = tronApiService.signTransaction(rawTransaction, childPrivateKey);
+            if (signedTransaction == null) {
+                throw new RuntimeException("Failed to sign USDT transaction");
+            }
+
+            // 4. Broadcast transaction
+            log.info("📡 Broadcasting USDT transaction");
+            String txHash = tronApiService.broadcastTransaction(signedTransaction);
             if (txHash == null) {
-                throw new RuntimeException("Failed to broadcast sweep transaction");
+                throw new RuntimeException("Failed to broadcast USDT transaction");
             }
 
-            // Update deposit as swept
+            // 5. Update deposit as swept
             deposit.setIsSwept(true);
             deposit.setSweepTxHash(txHash);
             deposit.setSweptAt(LocalDateTime.now());
             walletTransactionRepository.save(deposit);
 
-            // Create sweep transaction record
+            // 6. Create sweep transaction record
             WalletTransaction sweepTx = WalletTransaction.builder()
                 .txHash(txHash)
                 .fromAddress(fromAddress)
@@ -261,6 +309,7 @@ public class UsdtSweepService {
                 .amount(amount)
                 .tokenAddress(usdtContractAddress)
                 .transactionType(WalletTransaction.TransactionType.SWEEP)
+                .direction(WalletTransaction.TransactionDirection.OUT) // ADD THIS LINE
                 .status(WalletTransaction.TransactionStatus.PENDING)
                 .userId(deposit.getUserId())
                 .gasUsed(gasLimitTrx)
@@ -268,7 +317,7 @@ public class UsdtSweepService {
 
             walletTransactionRepository.save(sweepTx);
 
-            log.info("✅ Sweep transaction broadcasted: {} for {} USDT", txHash, amount);
+            log.info("✅ Sweep process completed: {} USDT from {}", amount, fromAddress);
 
             return SweepResultDto.SweepTransactionDto.builder()
                 .fromAddress(fromAddress)
@@ -279,7 +328,7 @@ public class UsdtSweepService {
                 .build();
 
         } catch (Exception e) {
-            log.error("Error sweeping deposit {}: {}", deposit.getTxHash(), e.getMessage());
+            log.error("❌ Error sweeping deposit {}: {}", deposit.getTxHash(), e.getMessage(), e);
 
             return SweepResultDto.SweepTransactionDto.builder()
                 .fromAddress(deposit.getToAddress())
@@ -297,20 +346,25 @@ public class UsdtSweepService {
         try {
             log.info("⛽ Sending {} TRX gas to {}", gasAmount, childAddress);
 
-            // Get master address properly
+            // Get master address and private key
             HdMasterWallet masterWallet = hdWalletService.getMasterWallet();
             String masterAddress = masterWallet.getMasterAddress();
+            String masterPrivateKey = hdWalletService.getMasterPrivateKey();
 
-            // Create TRX transfer transaction (placeholder)
-            String rawTransaction = createTrxTransferTransaction(
-                "placeholder_master_key",
-                masterAddress,
-                childAddress,
-                gasAmount
-            );
+            // Create TRX transfer transaction (using TronGrid API)
+            String rawTransaction = tronApiService.createTrxTransferTransaction(masterAddress, childAddress, gasAmount);
+            if (rawTransaction == null) {
+                throw new RuntimeException("Failed to create TRX transaction");
+            }
+
+            // Sign the transaction with master private key
+            String signedTransaction = tronApiService.signTransaction(rawTransaction, masterPrivateKey);
+            if (signedTransaction == null) {
+                throw new RuntimeException("Failed to sign TRX transaction");
+            }
 
             // Broadcast transaction
-            String txHash = tronApiService.broadcastTransaction(rawTransaction);
+            String txHash = tronApiService.broadcastTransaction(signedTransaction);
             if (txHash != null) {
                 log.info("✅ Gas sent: {} TRX to {}, TX: {}", gasAmount, childAddress, txHash);
                 return true;
@@ -324,32 +378,55 @@ public class UsdtSweepService {
     }
 
     /**
-     * Create USDT transfer transaction (simplified)
+     * Create USDT transfer transaction (using TronGrid API)
      */
     private String createUsdtTransferTransaction(String privateKey, String from, String to, BigDecimal amount) {
-        // This is a simplified implementation
-        // In reality, you would use TronWeb or similar library to create the transaction
-        log.info("Creating USDT transfer: {} USDT from {} to {}", amount, from, to);
+        try {
+            // 1. Create unsigned transaction
+            String rawTransaction = tronApiService.createUsdtTransferTransaction(from, to, amount);
+            if (rawTransaction == null) {
+                throw new RuntimeException("Failed to create USDT transaction");
+            }
 
-        // Placeholder for actual transaction creation
-        // You would need to:
-        // 1. Create TRC20 transfer call data
-        // 2. Create transaction with proper gas limit
-        // 3. Sign with private key
-        // 4. Return raw transaction hex
+            // 2. Sign transaction (currently placeholder)
+            String signedTransaction = tronApiService.signTransaction(rawTransaction, privateKey);
+            if (signedTransaction == null) {
+                throw new RuntimeException("Failed to sign USDT transaction");
+            }
 
-        return "placeholder_raw_transaction_hex";
+            log.info("✅ USDT transaction created and signed: {} USDT from {} to {}", amount, from, to);
+            return signedTransaction;
+
+        } catch (Exception e) {
+            log.error("❌ Error creating USDT transfer transaction", e);
+            throw new RuntimeException("Failed to create USDT transaction: " + e.getMessage());
+        }
     }
 
     /**
-     * Create TRX transfer transaction (simplified)
+     * Create TRX transfer transaction (using TronGrid API)
      */
     private String createTrxTransferTransaction(String privateKey, String from, String to, BigDecimal amount) {
-        // This is a simplified implementation
-        log.info("Creating TRX transfer: {} TRX from {} to {}", amount, from, to);
+        try {
+            // 1. Create unsigned transaction
+            String rawTransaction = tronApiService.createTrxTransferTransaction(from, to, amount);
+            if (rawTransaction == null) {
+                throw new RuntimeException("Failed to create TRX transaction");
+            }
 
-        // Placeholder for actual transaction creation
-        return "placeholder_raw_transaction_hex";
+            // 2. Sign transaction (currently placeholder)
+            String signedTransaction = tronApiService.signTransaction(rawTransaction, privateKey);
+            if (signedTransaction == null) {
+                throw new RuntimeException("Failed to sign TRX transaction");
+            }
+
+            log.info("✅ TRX transaction created and signed: {} TRX from {} to {}", amount, from, to);
+            return signedTransaction;
+
+        } catch (Exception e) {
+            log.error("❌ Error creating TRX transfer transaction", e);
+            throw new RuntimeException("Failed to create TRX transaction: " + e.getMessage());
+        }
     }
 
     /**
@@ -421,5 +498,36 @@ public class UsdtSweepService {
             "isSweeping", redisTemplate.hasKey(SWEEP_LOCK_KEY),
             "sweepEnabled", sweepEnabled
         );
+    }
+
+    /**
+     * Wait for gas confirmation
+     */
+    private boolean waitForGasConfirmation(String address, BigDecimal requiredGas, int maxRetries) {
+        try {
+            int retries = 0;
+            BigDecimal trxBalance;
+
+            do {
+                // Check TRX balance
+                trxBalance = tronApiService.getTrxBalance(address);
+                log.info("⏳ Waiting for gas confirmation... Attempt {}: TRX balance is {} TRX", retries + 1, trxBalance);
+
+                // If balance is sufficient, exit loop
+                if (trxBalance.compareTo(requiredGas) >= 0) {
+                    return true;
+                }
+
+                // Wait before next check
+                Thread.sleep(5000);
+                retries++;
+
+            } while (retries < maxRetries);
+
+        } catch (Exception e) {
+            log.error("Error waiting for gas confirmation: {}", e.getMessage());
+        }
+
+        return false;
     }
 }

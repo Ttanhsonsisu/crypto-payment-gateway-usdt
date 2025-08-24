@@ -1,12 +1,24 @@
 package com.UsdtWallet.UsdtWallet.service;
 
 import com.UsdtWallet.UsdtWallet.util.TronAddressUtil;
+import com.UsdtWallet.UsdtWallet.util.TronKeys;
+import com.UsdtWallet.UsdtWallet.util.TronTransactionSigner;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
+
+import org.bouncycastle.crypto.digests.SHA256Digest;
+import org.bouncycastle.crypto.signers.ECDSASigner;
+import org.bouncycastle.crypto.params.ECPrivateKeyParameters;
+import org.bouncycastle.math.ec.ECPoint;
+import org.bouncycastle.jce.ECNamedCurveTable;
+import org.bouncycastle.jce.spec.ECNamedCurveParameterSpec;
+import org.bouncycastle.util.encoders.Hex;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.core.type.TypeReference;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
@@ -72,19 +84,49 @@ public class TronApiService {
      */
     public BigDecimal getUsdtBalance(String address) {
         try {
-            // Use TronGrid's account API for TRC20 balance
-            String url = String.format("%s/v1/accounts/%s/transactions/trc20?limit=1&contract_address=%s",
-                tronApiUrl, address, usdtContractAddress);
+            log.debug("Getting USDT balance for address: {}", address);
+
+            // Use TriggerConstantContract to call balanceOf function
+            Map<String, Object> request = new HashMap<>();
+            request.put("owner_address", "TLsV52sRDL79HXGGm9yzwKibb6BeruhUzy"); // Any address for constant call
+            request.put("contract_address", usdtContractAddress);
+            request.put("function_selector", "balanceOf(address)");
+
+            // Encode the address parameter (remove 0x prefix if present and pad to 64 chars)
+            String hexAddress = TronAddressUtil.base58ToHex(address);
+            if (hexAddress.startsWith("0x")) hexAddress = hexAddress.substring(2);
+            if (hexAddress.startsWith("41")) hexAddress = hexAddress.substring(2);
+            // Pad to 64 characters
+            String paddedAddress = String.format("%64s", hexAddress).replace(' ', '0');
+            request.put("parameter", paddedAddress);
+            request.put("visible", true);
+
+            String url = tronApiUrl + "/wallet/triggerconstantcontract";
 
             HttpHeaders headers = createHeaders();
-            HttpEntity<String> entity = new HttpEntity<>(headers);
+            headers.setContentType(MediaType.APPLICATION_JSON);
 
-            ResponseEntity<Map> response = restTemplate.exchange(url, HttpMethod.GET, entity, Map.class);
+            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(request, headers);
+            ResponseEntity<Map> response = restTemplate.exchange(url, HttpMethod.POST, entity, Map.class);
 
             if (response.getStatusCode() == HttpStatus.OK && response.getBody() != null) {
-                // For getting actual balance, we need to use a different endpoint
-                return getAccountTrc20Balance(address, usdtContractAddress);
+                Object resultObj = response.getBody().get("constant_result");
+                if (resultObj instanceof List && !((List<?>) resultObj).isEmpty()) {
+                    List<String> constantResult = (List<String>) resultObj;
+                    String balanceHex = constantResult.get(0);
+
+                    if (balanceHex != null && !balanceHex.isEmpty()) {
+                        // Convert hex to BigInteger then to BigDecimal
+                        BigInteger balanceWei = new BigInteger(balanceHex, 16);
+                        // USDT has 6 decimals on Tron
+                        BigDecimal usdtBalance = new BigDecimal(balanceWei).divide(new BigDecimal("1000000"));
+                        log.debug("USDT balance for {}: {} USDT", address, usdtBalance);
+                        return usdtBalance;
+                    }
+                }
             }
+
+            log.debug("No USDT balance found for address: {}", address);
         } catch (Exception e) {
             log.error("Error getting USDT balance for address: {} on Nile testnet", address, e);
         }
@@ -202,17 +244,21 @@ public class TronApiService {
     /**
      * Broadcast transaction to Nile testnet
      */
-    public String broadcastTransaction(String rawTransaction) {
+    public String broadcastTransaction(String signedTransactionJson) {
         try {
-            Map<String, Object> request = new HashMap<>();
-            request.put("raw_data_hex", rawTransaction);
+            log.debug("Broadcasting signed transaction: {}", signedTransactionJson.substring(0, Math.min(200, signedTransactionJson.length())) + "...");
+
+            // Parse JSON to get the transaction object
+            ObjectMapper mapper = new ObjectMapper();
+            Map<String, Object> transactionMap = mapper.readValue(signedTransactionJson, new TypeReference<Map<String, Object>>() {});
 
             String url = tronApiUrl + "/wallet/broadcasttransaction";
 
             HttpHeaders headers = createHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
 
-            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(request, headers);
+            // Send the transaction object directly
+            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(transactionMap, headers);
             ResponseEntity<Map> response = restTemplate.exchange(url, HttpMethod.POST, entity, Map.class);
 
             if (response.getStatusCode() == HttpStatus.OK && response.getBody() != null) {
@@ -226,10 +272,23 @@ public class TronApiService {
                 }
             }
         } catch (Exception e) {
-            log.error("Error broadcasting transaction to Nile testnet", e);
+            log.error("Error broadcasting transaction to Nile testnet: {}", e.getMessage(), e);
         }
         return null;
     }
+
+    /**
+     * Get transaction info by ID from Nile testnet
+     */
+    public Map<String, Object> getTransactionInfo(String txid) {
+        String url = tronApiUrl + "/wallet/gettransactioninfobyid";
+        HttpHeaders headers = createHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        Map<String, Object> req = Map.of("value", txid);
+        ResponseEntity<Map> res = restTemplate.exchange(url, HttpMethod.POST, new HttpEntity<>(req, headers), Map.class);
+        return res.getBody();
+    }
+
 
     /**
      * Get transaction by hash from Nile testnet
@@ -436,5 +495,166 @@ public class TronApiService {
         long currentBlock = getLatestBlockNumber();
         long blockDiff = currentBlock - blockNumber;
         return currentTime - (blockDiff * 3000); // 3 seconds per block
+    }
+
+    /**
+     * Create TRX transfer transaction using TronGrid API
+     */
+    public String createTrxTransferTransaction(String fromAddress, String toAddress, BigDecimal amount) {
+        try {
+            log.info("Creating TRX transfer: {} TRX from {} to {}", amount, fromAddress, toAddress);
+
+            // Convert TRX to sun (1 TRX = 1,000,000 sun)
+            BigInteger amountInSun = amount.multiply(new BigDecimal("1000000")).toBigInteger();
+
+            Map<String, Object> request = new HashMap<>();
+            request.put("owner_address", fromAddress);
+            request.put("to_address", toAddress);
+            request.put("amount", amountInSun.longValue());
+            request.put("visible", true);
+
+            String url = tronApiUrl + "/wallet/createtransaction";
+
+            HttpHeaders headers = createHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+
+            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(request, headers);
+            ResponseEntity<Map> response = restTemplate.exchange(url, HttpMethod.POST, entity, Map.class);
+
+            if (response.getStatusCode() == HttpStatus.OK && response.getBody() != null) {
+                Object rawDataObj = response.getBody().get("raw_data");
+                if (rawDataObj != null) {
+                    // Transaction created successfully
+                    log.debug("TRX transaction created successfully");
+
+                    // Convert response to JSON string
+                    ObjectMapper mapper = new ObjectMapper();
+                    String transactionJson = mapper.writeValueAsString(response.getBody());
+
+                    // CRITICAL: Verify transaction has raw_data_hex
+                    Map<String, Object> txMap = response.getBody();
+                    if (!txMap.containsKey("raw_data_hex")) {
+                        log.error("❌ CRITICAL: TRX Transaction missing raw_data_hex!");
+                        log.error("Transaction response: {}", transactionJson);
+                        throw new RuntimeException("TronGrid did not return raw_data_hex for TRX transaction");
+                    }
+
+                    String rawDataHex = (String) txMap.get("raw_data_hex");
+                    log.info("✅ TRX Transaction created with raw_data_hex: {}", rawDataHex.substring(0, Math.min(32, rawDataHex.length())) + "...");
+
+                    return transactionJson;
+                } else {
+                    log.error("❌ No raw_data in TronGrid TRX response: {}", response.getBody());
+                }
+            } else {
+                log.error("❌ TronGrid TRX API error: {} - {}", response.getStatusCode(), response.getBody());
+            }
+
+        } catch (Exception e) {
+            log.error("Error creating TRX transfer transaction", e);
+        }
+        return null;
+    }
+
+    /**
+     * Create USDT transfer transaction using TronGrid API
+     */
+    public String createUsdtTransferTransaction(String fromAddress, String toAddress, BigDecimal amount) {
+        try {
+            log.info("Creating USDT transfer: {} USDT from {} to {}", amount, fromAddress, toAddress);
+
+            // Convert USDT to smallest unit (6 decimals)
+            BigInteger amountInWei = amount.multiply(new BigDecimal("1000000")).toBigInteger();
+
+            // Create TRC20 transfer function call
+            // transfer(address,uint256) = a9059cbb
+            String methodId = "a9059cbb";
+
+            // Convert Base58 to hex (có prefix 41 hoặc A0 tùy mạng)
+            String toAddressHex = TronAddressUtil.base58ToHex(toAddress);
+            if (toAddressHex.startsWith("0x")) {
+                toAddressHex = toAddressHex.substring(2);
+            }
+
+            // ABI chỉ nhận 20 byte cuối (40 hex chars)
+            if (toAddressHex.length() == 42) {
+                toAddressHex = toAddressHex.substring(2); // bỏ 2 byte prefix (41 hoặc A0)
+            }
+
+            String paddedToAddress = String.format("%64s", toAddressHex).replace(' ', '0');
+
+            // Encode amount (pad to 64 chars)
+            String amountHex = amountInWei.toString(16);
+            String paddedAmount = String.format("%64s", amountHex).replace(' ', '0');
+
+            //  CHỈ tham số (không có selector)
+            String parameter = paddedToAddress + paddedAmount;
+
+            Map<String, Object> request = new HashMap<>();
+            request.put("owner_address", fromAddress);
+            request.put("contract_address", usdtContractAddress);
+            request.put("function_selector", "transfer(address,uint256)");
+            request.put("parameter", parameter);
+            request.put("fee_limit", 15000000); // 15 TRX fee limit
+            request.put("call_value", 0);
+            request.put("visible", true);
+
+            // Gợi ý fee_limit an toàn khi ví con có 10 TRX (nên < số dư):
+            request.put("fee_limit", 8_000_000);
+
+            String url = tronApiUrl + "/wallet/triggersmartcontract";
+
+            HttpHeaders headers = createHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+
+            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(request, headers);
+            ResponseEntity<Map> response = restTemplate.exchange(url, HttpMethod.POST, entity, Map.class);
+
+            if (response.getStatusCode() == HttpStatus.OK && response.getBody() != null) {
+                Object transactionObj = response.getBody().get("transaction");
+                if (transactionObj != null) {
+                    log.debug("USDT transaction created successfully");
+
+                    // Convert transaction object to JSON string
+                    ObjectMapper mapper = new ObjectMapper();
+                    String transactionJson = mapper.writeValueAsString(transactionObj);
+
+                    // CRITICAL: Verify transaction has raw_data_hex
+                    Map<String, Object> txMap = (Map<String, Object>) transactionObj;
+                    if (!txMap.containsKey("raw_data_hex")) {
+                        log.error("❌ CRITICAL: Transaction missing raw_data_hex!");
+                        log.error("Transaction response: {}", transactionJson);
+                        throw new RuntimeException("TronGrid did not return raw_data_hex - cannot sign transaction");
+                    }
+
+                    String rawDataHex = (String) txMap.get("raw_data_hex");
+                    log.info("✅ Transaction created with raw_data_hex: {}", rawDataHex.substring(0, Math.min(32, rawDataHex.length())) + "...");
+
+                    return transactionJson;
+                } else {
+                    log.error("❌ No transaction object in TronGrid response: {}", response.getBody());
+                }
+            } else {
+                log.error("❌ TronGrid API error: {} - {}", response.getStatusCode(), response.getBody());
+            }
+
+        } catch (Exception e) {
+            log.error("Error creating USDT transfer transaction", e);
+        }
+        return null;
+    }
+
+    /**
+     * Sign transaction with private key using Tron standard protocol
+     */
+    public String signTransaction(String rawTransactionJson, String privateKeyHex) {
+        try {
+            log.debug("Signing transaction with Tron standard signer");
+            return TronTransactionSigner.signTransaction(rawTransactionJson, privateKeyHex);
+
+        } catch (Exception e) {
+            log.error("❌ Failed to sign transaction: {}", e.getMessage());
+            throw new RuntimeException("Transaction signing failed: " + e.getMessage(), e);
+        }
     }
 }
