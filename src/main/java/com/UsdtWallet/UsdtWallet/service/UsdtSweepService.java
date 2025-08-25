@@ -2,14 +2,16 @@ package com.UsdtWallet.UsdtWallet.service;
 
 import com.UsdtWallet.UsdtWallet.model.dto.SweepResultDto;
 import com.UsdtWallet.UsdtWallet.model.entity.WalletTransaction;
+import com.UsdtWallet.UsdtWallet.model.entity.TokenSweep;
+import com.UsdtWallet.UsdtWallet.model.entity.GasTopup;
 import com.UsdtWallet.UsdtWallet.model.entity.HdMasterWallet;
 import com.UsdtWallet.UsdtWallet.repository.WalletTransactionRepository;
-import com.UsdtWallet.UsdtWallet.util.TronAddressUtil;
+import com.UsdtWallet.UsdtWallet.repository.TokenSweepRepository;
+import com.UsdtWallet.UsdtWallet.repository.GasTopupRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,6 +21,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
 @Service
@@ -28,8 +31,11 @@ public class UsdtSweepService {
 
     private final TronApiService tronApiService;
     private final WalletTransactionRepository walletTransactionRepository;
+    private final TokenSweepRepository tokenSweepRepository;
+    private final GasTopupRepository gasTopupRepository; // ĐÃ CÓ IMPORT
     private final HdWalletService hdWalletService;
     private final RedisTemplate<String, Object> redisTemplate;
+    private final PointsService pointsService;
 
     @Value("${sweep.min.amount:5}")
     private BigDecimal minimumSweepAmount;
@@ -193,19 +199,36 @@ public class UsdtSweepService {
      */
     @Transactional
     public SweepResultDto.SweepTransactionDto sweepSingleDeposit(WalletTransaction deposit) {
+        String fromAddress = deposit.getToAddress(); // Child wallet
+        BigDecimal amount = deposit.getAmount();
+
+        TokenSweep tokenSweep = new TokenSweep();
+        tokenSweep.setChildIndex(hdWalletService.getChildIndexByAddress(fromAddress));
+        tokenSweep.setChildAddress(fromAddress);
+        tokenSweep.setMasterAddress(hdWalletService.getMasterWallet().getMasterAddress());
+        tokenSweep.setAmount(amount);
+        tokenSweep.setStatus(TokenSweep.SweepStatus.PENDING);
+        tokenSweep.setRetryCount(0);
+
+        tokenSweep = tokenSweepRepository.save(tokenSweep);
+        log.info("Đã tạo TokenSweep record ID: {} cho việc sweep {} USDT từ {}",
+            tokenSweep.getId(), amount, fromAddress);
+
         try {
-            String fromAddress = deposit.getToAddress(); // Child wallet
             HdMasterWallet masterWallet = hdWalletService.getMasterWallet();
             String masterAddress = masterWallet.getMasterAddress();
-            BigDecimal amount = deposit.getAmount();
 
             log.info("🧹 Sweeping {} USDT from {} to master wallet", amount, fromAddress);
 
-            // 1. Check current USDT balance of child wallet
             BigDecimal currentUsdtBalance = tronApiService.getUsdtBalance(fromAddress);
             if (currentUsdtBalance.compareTo(amount) < 0) {
                 String error = String.format("Insufficient USDT balance. Expected: %s, Current: %s", amount, currentUsdtBalance);
                 log.warn(error);
+
+                // CẬP NHẬT TOKENSWEEP STATUS
+                tokenSweep.setStatus(TokenSweep.SweepStatus.FAILED);
+                tokenSweep.setErrorMessage(error);
+                tokenSweepRepository.save(tokenSweep);
 
                 return SweepResultDto.SweepTransactionDto.builder()
                     .fromAddress(fromAddress)
@@ -215,7 +238,6 @@ public class UsdtSweepService {
                     .build();
             }
 
-            // 2. Check TRX balance for gas fees
             BigDecimal trxBalance = tronApiService.getTrxBalance(fromAddress);
             log.debug("Child wallet TRX balance: {} TRX, Required gas: {} TRX", trxBalance, gasLimitTrx);
 
@@ -223,26 +245,13 @@ public class UsdtSweepService {
                 log.info("⛽ Child wallet needs TRX for gas. Current: {} TRX, Required: {} TRX",
                     trxBalance, gasLimitTrx);
 
-                // Check master wallet TRX balance
-                BigDecimal masterTrxBalance = tronApiService.getTrxBalance(masterAddress);
-                if (masterTrxBalance.compareTo(gasLimitTrx) < 0) {
-                    String error = String.format("Master wallet insufficient TRX for gas. Available: %s, Required: %s",
-                        masterTrxBalance, gasLimitTrx);
-                    log.error("❌ " + error);
-
-                    return SweepResultDto.SweepTransactionDto.builder()
-                        .fromAddress(fromAddress)
-                        .amount(amount)
-                        .status("FAILED")
-                        .errorMessage(error)
-                        .build();
-                }
-
-                // Send TRX for gas first
                 boolean gasSent = sendGasToChildWallet(fromAddress, gasLimitTrx);
                 if (!gasSent) {
                     String error = "Failed to send TRX gas to child wallet";
-                    log.error("❌ " + error);
+
+                    tokenSweep.setStatus(TokenSweep.SweepStatus.FAILED);
+                    tokenSweep.setErrorMessage(error);
+                    tokenSweepRepository.save(tokenSweep);
 
                     return SweepResultDto.SweepTransactionDto.builder()
                         .fromAddress(fromAddress)
@@ -252,13 +261,12 @@ public class UsdtSweepService {
                         .build();
                 }
 
-                // Wait for gas transaction to confirm with retry logic
-                log.info("⏳ Waiting for gas transaction to confirm...");
-
+                // Wait for gas confirmation
                 if (!waitForGasConfirmation(fromAddress, gasLimitTrx, 60)) {
-                    String error = String.format("Gas transaction not confirmed after 60 seconds. Current balance: %s TRX",
-                        tronApiService.getTrxBalance(fromAddress));
-                    log.warn("⚠️ " + error);
+                    String error = "Gas transaction not confirmed after 60 seconds";
+                    tokenSweep.setStatus(TokenSweep.SweepStatus.FAILED);
+                    tokenSweep.setErrorMessage(error);
+                    tokenSweepRepository.save(tokenSweep);
 
                     return SweepResultDto.SweepTransactionDto.builder()
                         .fromAddress(fromAddress)
@@ -267,41 +275,37 @@ public class UsdtSweepService {
                         .errorMessage(error)
                         .build();
                 }
-
-                log.info("✅ Gas successfully sent and confirmed. New balance: {} TRX", trxBalance);
             }
 
-            // 3. Create and sign USDT transfer transaction (using TronGrid API)
-            log.info("🚀 Creating USDT transfer transaction on TronGrid");
-
-            // Get private key for child wallet
             String childPrivateKey = hdWalletService.getPrivateKeyForAddress(fromAddress);
-
             String rawTransaction = tronApiService.createUsdtTransferTransaction(fromAddress, masterAddress, amount);
             if (rawTransaction == null) {
                 throw new RuntimeException("Failed to create USDT transaction");
             }
 
-            // Sign the transaction with real private key
             String signedTransaction = tronApiService.signTransaction(rawTransaction, childPrivateKey);
             if (signedTransaction == null) {
                 throw new RuntimeException("Failed to sign USDT transaction");
             }
 
-            // 4. Broadcast transaction
+            // 5. Broadcast transaction
             log.info("📡 Broadcasting USDT transaction");
             String txHash = tronApiService.broadcastTransaction(signedTransaction);
             if (txHash == null) {
                 throw new RuntimeException("Failed to broadcast USDT transaction");
             }
 
-            // 5. Update deposit as swept
+            tokenSweep.setSweepTxHash(txHash);
+            tokenSweep.setStatus(TokenSweep.SweepStatus.SENT); // Đã broadcast, chờ confirm
+            tokenSweepRepository.save(tokenSweep);
+
+            // Update WalletTransaction
             deposit.setIsSwept(true);
             deposit.setSweepTxHash(txHash);
             deposit.setSweptAt(LocalDateTime.now());
             walletTransactionRepository.save(deposit);
 
-            // 6. Create sweep transaction record
+            // Tạo sweep transaction record
             WalletTransaction sweepTx = WalletTransaction.builder()
                 .txHash(txHash)
                 .fromAddress(fromAddress)
@@ -309,7 +313,7 @@ public class UsdtSweepService {
                 .amount(amount)
                 .tokenAddress(usdtContractAddress)
                 .transactionType(WalletTransaction.TransactionType.SWEEP)
-                .direction(WalletTransaction.TransactionDirection.OUT) // ADD THIS LINE
+                .direction(WalletTransaction.TransactionDirection.OUT)
                 .status(WalletTransaction.TransactionStatus.PENDING)
                 .userId(deposit.getUserId())
                 .gasUsed(gasLimitTrx)
@@ -317,7 +321,8 @@ public class UsdtSweepService {
 
             walletTransactionRepository.save(sweepTx);
 
-            log.info("✅ Sweep process completed: {} USDT from {}", amount, fromAddress);
+            log.info("✅ Sweep process completed: {} USDT from {} - TokenSweep ID: {} - TxHash: {}",
+                amount, fromAddress, tokenSweep.getId(), txHash);
 
             return SweepResultDto.SweepTransactionDto.builder()
                 .fromAddress(fromAddress)
@@ -329,6 +334,11 @@ public class UsdtSweepService {
 
         } catch (Exception e) {
             log.error("❌ Error sweeping deposit {}: {}", deposit.getTxHash(), e.getMessage(), e);
+
+            tokenSweep.setStatus(TokenSweep.SweepStatus.FAILED);
+            tokenSweep.setErrorMessage(e.getMessage());
+            tokenSweep.setRetryCount(tokenSweep.getRetryCount() + 1);
+            tokenSweepRepository.save(tokenSweep);
 
             return SweepResultDto.SweepTransactionDto.builder()
                 .fromAddress(deposit.getToAddress())
@@ -343,95 +353,208 @@ public class UsdtSweepService {
      * Send TRX for gas to child wallet
      */
     private boolean sendGasToChildWallet(String childAddress, BigDecimal gasAmount) {
+        GasTopup gasTopup = null;
+
         try {
             log.info("⛽ Sending {} TRX gas to {}", gasAmount, childAddress);
 
-            // Get master address and private key
+            Integer childIndex = hdWalletService.getChildIndexByAddress(childAddress);
+            gasTopup = new GasTopup();
+            gasTopup.setChildIndex(childIndex);
+            gasTopup.setAmountTrx(gasAmount);
+            gasTopup.setStatus(GasTopup.TopupStatus.PENDING);
+            gasTopup = gasTopupRepository.save(gasTopup);
+
+            log.info("Đã tạo GasTopup record ID: {} cho việc nạp {} TRX vào child #{}",
+                gasTopup.getId(), gasAmount, childIndex);
+
             HdMasterWallet masterWallet = hdWalletService.getMasterWallet();
             String masterAddress = masterWallet.getMasterAddress();
             String masterPrivateKey = hdWalletService.getMasterPrivateKey();
 
-            // Create TRX transfer transaction (using TronGrid API)
             String rawTransaction = tronApiService.createTrxTransferTransaction(masterAddress, childAddress, gasAmount);
             if (rawTransaction == null) {
                 throw new RuntimeException("Failed to create TRX transaction");
             }
 
-            // Sign the transaction with master private key
             String signedTransaction = tronApiService.signTransaction(rawTransaction, masterPrivateKey);
             if (signedTransaction == null) {
                 throw new RuntimeException("Failed to sign TRX transaction");
             }
 
-            // Broadcast transaction
             String txHash = tronApiService.broadcastTransaction(signedTransaction);
             if (txHash != null) {
-                log.info("✅ Gas sent: {} TRX to {}, TX: {}", gasAmount, childAddress, txHash);
+                gasTopup.setTxHash(txHash);
+                gasTopup.setStatus(GasTopup.TopupStatus.SENT);
+                gasTopupRepository.save(gasTopup);
+
+                log.info("✅ Gas sent: {} TRX to {}, TX: {} - GasTopup ID: {}",
+                    gasAmount, childAddress, txHash, gasTopup.getId());
                 return true;
+            } else {
+                // Broadcast thất bại
+                gasTopup.setStatus(GasTopup.TopupStatus.FAILED);
+                gasTopup.setTxHash("BROADCAST_FAILED");
+                gasTopupRepository.save(gasTopup);
             }
 
         } catch (Exception e) {
             log.error("Error sending gas to child wallet {}: {}", childAddress, e.getMessage());
+
+            if (gasTopup != null) {
+                gasTopup.setStatus(GasTopup.TopupStatus.FAILED);
+                gasTopup.setTxHash("ERROR: " + e.getMessage());
+                gasTopupRepository.save(gasTopup);
+            }
         }
 
         return false;
     }
 
     /**
-     * Create USDT transfer transaction (using TronGrid API)
+     * Wait for gas confirmation
      */
-    private String createUsdtTransferTransaction(String privateKey, String from, String to, BigDecimal amount) {
+    private boolean waitForGasConfirmation(String address, BigDecimal requiredGas, int maxRetries) {
         try {
-            // 1. Create unsigned transaction
-            String rawTransaction = tronApiService.createUsdtTransferTransaction(from, to, amount);
-            if (rawTransaction == null) {
-                throw new RuntimeException("Failed to create USDT transaction");
-            }
+            int retries = 0;
+            BigDecimal trxBalance;
 
-            // 2. Sign transaction (currently placeholder)
-            String signedTransaction = tronApiService.signTransaction(rawTransaction, privateKey);
-            if (signedTransaction == null) {
-                throw new RuntimeException("Failed to sign USDT transaction");
-            }
+            do {
+                trxBalance = tronApiService.getTrxBalance(address);
+                log.info("⏳ Waiting for gas confirmation... Attempt {}: TRX balance is {} TRX", retries + 1, trxBalance);
 
-            log.info("✅ USDT transaction created and signed: {} USDT from {} to {}", amount, from, to);
-            return signedTransaction;
+                if (trxBalance.compareTo(requiredGas) >= 0) {
+                    return true;
+                }
+
+                Thread.sleep(5000);
+                retries++;
+
+            } while (retries < maxRetries);
 
         } catch (Exception e) {
-            log.error("❌ Error creating USDT transfer transaction", e);
-            throw new RuntimeException("Failed to create USDT transaction: " + e.getMessage());
+            log.error("Error waiting for gas confirmation: {}", e.getMessage());
+        }
+
+        return false;
+    }
+
+    /**
+     * SCHEDULED: Confirm pending TokenSweeps trong database
+     */
+    @Scheduled(fixedDelay = 45000) // Chạy mỗi 45 giây
+    @Transactional
+    public void confirmPendingTokenSweeps() {
+        try {
+            List<TokenSweep> sentSweeps = tokenSweepRepository.findByStatus(TokenSweep.SweepStatus.SENT);
+
+            if (sentSweeps.isEmpty()) {
+                return;
+            }
+
+            log.info("🔍 Kiểm tra {} SENT token sweeps để confirm", sentSweeps.size());
+
+            for (TokenSweep sweep : sentSweeps) {
+                try {
+                    if (sweep.getSweepTxHash() != null && !sweep.getSweepTxHash().isEmpty()) {
+                        log.debug("🔍 Checking confirmation for TokenSweep ID {} with txHash: {}",
+                            sweep.getId(), sweep.getSweepTxHash());
+
+                        var txInfo = tronApiService.getTransactionInfo(sweep.getSweepTxHash());
+
+                        if (txInfo != null) {
+                            log.debug("📋 Transaction info cho {}: {}", sweep.getSweepTxHash(), txInfo);
+
+                            Object result = txInfo.get("result");
+                            Object receipt = txInfo.get("receipt");
+
+                            // Kiểm tra cả result và receipt
+                            if ("SUCCESS".equals(result) || (receipt != null && "SUCCESS".equals(((Map<?, ?>)receipt).get("result")))) {
+                                sweep.setStatus(TokenSweep.SweepStatus.CONFIRMED);
+                                sweep.setUpdatedAt(LocalDateTime.now());
+                                tokenSweepRepository.save(sweep);
+
+                                log.info("✅ TokenSweep confirmed: {} USDT from {} (ID: {}) - TxHash: {}",
+                                    sweep.getAmount(), sweep.getChildAddress(), sweep.getId(), sweep.getSweepTxHash());
+
+                                updateCorrespondingWalletTransaction(sweep.getSweepTxHash());
+
+                            } else if ("FAILED".equals(result) || (receipt != null && "FAILED".equals(((Map<?, ?>)receipt).get("result")))) {
+                                sweep.setStatus(TokenSweep.SweepStatus.FAILED);
+                                sweep.setErrorMessage("Transaction failed on blockchain - Result: " + result);
+                                sweep.setUpdatedAt(LocalDateTime.now());
+                                tokenSweepRepository.save(sweep);
+
+                                log.warn("❌ TokenSweep failed on blockchain: {} (ID: {}) - Result: {}",
+                                    sweep.getSweepTxHash(), sweep.getId(), result);
+
+                            } else {
+                                // Transaction vẫn đang pending
+                                log.debug("⏳ TokenSweep {} vẫn đang pending - Result: {}",
+                                    sweep.getSweepTxHash(), result);
+
+                                // Check timeout - nếu quá 30 phút thì retry
+                                if (sweep.getCreatedAt().isBefore(LocalDateTime.now().minusMinutes(30))) {
+                                    log.warn("⚠️ TokenSweep {} đã pending quá 30 phút, có thể cần retry",
+                                        sweep.getSweepTxHash());
+                                }
+                            }
+                        } else {
+                            log.warn("⚠️ Không lấy được transaction info cho TokenSweep {}", sweep.getSweepTxHash());
+
+                            // Check timeout - nếu quá 1 giờ và không có txInfo thì mark failed
+                            if (sweep.getCreatedAt().isBefore(LocalDateTime.now().minusHours(1))) {
+                                sweep.setStatus(TokenSweep.SweepStatus.FAILED);
+                                sweep.setErrorMessage("Timeout: Không thể lấy transaction info sau 1 giờ");
+                                sweep.setUpdatedAt(LocalDateTime.now());
+                                tokenSweepRepository.save(sweep);
+
+                                log.error("❌ TokenSweep {} timeout - Mark as FAILED", sweep.getSweepTxHash());
+                            }
+                        }
+                    } else {
+                        log.warn("⚠️ TokenSweep ID {} không có txHash", sweep.getId());
+                    }
+                } catch (Exception e) {
+                    log.error("❌ Lỗi check confirmation cho TokenSweep {}: {}",
+                        sweep.getId(), e.getMessage(), e);
+                }
+            }
+
+        } catch (Exception e) {
+            log.error("❌ Lỗi confirm pending token sweeps: {}", e.getMessage(), e);
         }
     }
 
     /**
-     * Create TRX transfer transaction (using TronGrid API)
+     * Cập nhật WalletTransaction tương ứng khi TokenSweep confirmed
      */
-    private String createTrxTransferTransaction(String privateKey, String from, String to, BigDecimal amount) {
+    private void updateCorrespondingWalletTransaction(String txHash) {
         try {
-            // 1. Create unsigned transaction
-            String rawTransaction = tronApiService.createTrxTransferTransaction(from, to, amount);
-            if (rawTransaction == null) {
-                throw new RuntimeException("Failed to create TRX transaction");
+            Optional<WalletTransaction> optionalTx = walletTransactionRepository.findByTxHash(txHash);
+
+            if (optionalTx.isPresent()) {
+                WalletTransaction tx = optionalTx.get();
+                if (tx.getTransactionType() == WalletTransaction.TransactionType.SWEEP &&
+                    tx.getStatus() == WalletTransaction.TransactionStatus.PENDING) {
+
+                    tx.setStatus(WalletTransaction.TransactionStatus.CONFIRMED);
+                    walletTransactionRepository.save(tx);
+
+                    log.info("✅ Updated WalletTransaction {} status to CONFIRMED", txHash);
+                }
+            } else {
+                log.warn("⚠️ Không tìm thấy WalletTransaction với txHash: {}", txHash);
             }
-
-            // 2. Sign transaction (currently placeholder)
-            String signedTransaction = tronApiService.signTransaction(rawTransaction, privateKey);
-            if (signedTransaction == null) {
-                throw new RuntimeException("Failed to sign TRX transaction");
-            }
-
-            log.info("✅ TRX transaction created and signed: {} TRX from {} to {}", amount, from, to);
-            return signedTransaction;
-
         } catch (Exception e) {
-            log.error("❌ Error creating TRX transfer transaction", e);
-            throw new RuntimeException("Failed to create TRX transaction: " + e.getMessage());
+            log.error("❌ Lỗi update WalletTransaction {}: {}", txHash, e.getMessage());
         }
     }
 
     /**
      * Manual sweep for specific address
      */
+    @Transactional
     public SweepResultDto sweepAddress(String address) {
         log.info("🧹 Manual sweep for address: {}", address);
 
@@ -464,7 +587,6 @@ public class UsdtSweepService {
             .map(SweepResultDto.SweepTransactionDto::getAmount)
             .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        // Fix the last remaining getMasterWalletAddress call
         HdMasterWallet masterWallet = hdWalletService.getMasterWallet();
         String masterAddress = masterWallet.getMasterAddress();
 
@@ -501,33 +623,198 @@ public class UsdtSweepService {
     }
 
     /**
-     * Wait for gas confirmation
+     * Trigger immediate sweep with points credit - THIẾU METHOD NÀY
      */
-    private boolean waitForGasConfirmation(String address, BigDecimal requiredGas, int maxRetries) {
+    public void triggerSweepWithPointsCredit(WalletTransaction depositTransaction) {
         try {
-            int retries = 0;
-            BigDecimal trxBalance;
+            String address = depositTransaction.getToAddress();
+            log.info("🚀 Triggering immediate sweep with points credit for: {}", address);
 
-            do {
-                // Check TRX balance
-                trxBalance = tronApiService.getTrxBalance(address);
-                log.info("⏳ Waiting for gas confirmation... Attempt {}: TRX balance is {} TRX", retries + 1, trxBalance);
+            // Acquire lock to prevent interference with scheduled sweep
+            String sweepLockKey = "sweep:address:" + address;
+            Boolean lockAcquired = redisTemplate.opsForValue()
+                .setIfAbsent(sweepLockKey, "locked", 300, TimeUnit.SECONDS); // 5 min lock
 
-                // If balance is sufficient, exit loop
-                if (trxBalance.compareTo(requiredGas) >= 0) {
-                    return true;
+            if (!Boolean.TRUE.equals(lockAcquired)) {
+                log.debug("Sweep already in progress for address {}, skipping...", address);
+                return;
+            }
+
+            try {
+                // Sweep the specific deposit
+                SweepResultDto.SweepTransactionDto result = sweepSingleDeposit(depositTransaction);
+
+                if ("SUCCESS".equals(result.getStatus())) {
+                    // Update deposit status to CONFIRMED after successful sweep
+                    depositTransaction.setStatus(WalletTransaction.TransactionStatus.CONFIRMED);
+
+                    // Credit points ONLY after successful sweep
+                    BigDecimal pointsToCredit = depositTransaction.getAmount();
+                    log.info("💳 Attempting to credit {} points to user {} for successful sweep",
+                        pointsToCredit, depositTransaction.getUserId());
+
+                    boolean pointsSuccess = pointsService.creditPointsForDeposit(
+                        depositTransaction.getUserId(),
+                        pointsToCredit,
+                        String.valueOf(depositTransaction.getId()),
+                        depositTransaction.getAmount()
+                    );
+
+                    if (pointsSuccess) {
+                        depositTransaction.setPointsCredited(pointsToCredit);
+                        depositTransaction.setPointsCreditedAt(LocalDateTime.now());
+
+                        log.info("✅ Immediate sweep + points credit successful: {} USDT swept from {} (TX: {}) → {} points credited to user {}",
+                            result.getAmount(), address, result.getTxHash(), pointsToCredit, depositTransaction.getUserId());
+                    } else {
+                        log.error("❌ Sweep successful but points credit failed for deposit {} - User: {}, Amount: {} points",
+                            depositTransaction.getTxHash(), depositTransaction.getUserId(), pointsToCredit);
+                    }
+
+                    // Save updated transaction
+                    walletTransactionRepository.save(depositTransaction);
+
+                } else {
+                    log.warn("⚠️ Immediate sweep failed for {}: {}", address, result.getErrorMessage());
+                    // Keep transaction status as PENDING for retry later
                 }
 
-                // Wait before next check
-                Thread.sleep(5000);
-                retries++;
-
-            } while (retries < maxRetries);
+            } finally {
+                // Release address-specific lock
+                redisTemplate.delete(sweepLockKey);
+            }
 
         } catch (Exception e) {
-            log.error("Error waiting for gas confirmation: {}", e.getMessage());
+            log.error("Error in immediate sweep + points credit for deposit {}: {}",
+                depositTransaction.getTxHash(), e.getMessage(), e);
         }
+    }
 
-        return false;
+    /**
+     * SCHEDULED: Confirm pending GasTopups trong database
+     */
+    @Scheduled(fixedDelay = 30000)
+    @Transactional
+    public void confirmPendingGasTopups() {
+        try {
+            List<GasTopup> sentTopups = gasTopupRepository.findByStatus(GasTopup.TopupStatus.SENT);
+
+            if (sentTopups.isEmpty()) {
+                return;
+            }
+
+            log.info("🔍 Kiểm tra {} SENT gas topups để confirm", sentTopups.size());
+
+            for (GasTopup topup : sentTopups) {
+                try {
+                    if (topup.getTxHash() != null && !topup.getTxHash().startsWith("ERROR") && !topup.getTxHash().equals("BROADCAST_FAILED")) {
+                        log.debug("🔍 Checking confirmation for GasTopup ID {} with txHash: {}",
+                            topup.getId(), topup.getTxHash());
+
+                        var txInfo = tronApiService.getTransactionInfo(topup.getTxHash());
+
+                        if (txInfo != null) {
+                            log.debug("📋 Transaction info cho gas topup {}: {}", topup.getTxHash(), txInfo);
+
+                            Object result = txInfo.get("result");
+                            Object receipt = txInfo.get("receipt");
+                            Object contractResult = txInfo.get("contractResult");
+
+                            boolean isSuccess = false;
+
+                            if (receipt != null) {
+                                // Có receipt = transaction đã được process
+                                log.debug("🔍 Analyzing contractResult: {}, type: {}", contractResult,
+                                    contractResult != null ? contractResult.getClass().getSimpleName() : "null");
+
+                                boolean hasErrors = false;
+                                if (contractResult != null && contractResult instanceof java.util.List<?>) {
+                                    java.util.List<?> contractList = (java.util.List<?>)contractResult;
+                                    log.debug("📋 ContractResult is List with {} items: {}", contractList.size(), contractList);
+
+                                    // Đối với TRX transfer, contractResult=[] hoặc contractResult=[null] hoặc contractResult=[""]
+                                    // đều có nghĩa là SUCCESS
+                                    if (contractList.isEmpty()) {
+                                        hasErrors = false;
+                                        log.debug("✅ ContractResult empty - SUCCESS");
+                                    } else {
+                                        // Check nếu chỉ chứa null hoặc empty string
+                                        boolean hasRealErrors = contractList.stream()
+                                            .anyMatch(item -> item != null && !item.toString().trim().isEmpty());
+                                        hasErrors = hasRealErrors;
+
+                                        if (hasRealErrors) {
+                                            log.debug("❌ ContractResult has real errors: {}", contractList);
+                                        } else {
+                                            log.debug("✅ ContractResult only has null/empty items - SUCCESS");
+                                        }
+                                    }
+                                } else if (contractResult != null) {
+                                    String contractStr = contractResult.toString().trim();
+                                    hasErrors = !contractStr.isEmpty() && !"null".equals(contractStr);
+                                    log.debug("📋 ContractResult is not List: '{}' - hasErrors: {}", contractStr, hasErrors);
+                                }
+
+                                if (!hasErrors) {
+                                    isSuccess = true;
+                                    log.debug("✅ TRX transfer thành công - có receipt, không có contractResult errors");
+                                } else {
+                                    isSuccess = false;
+                                    log.debug("❌ TRX transfer thất bại - có contractResult errors: {}", contractResult);
+                                }
+                            } else if ("SUCCESS".equals(result)) {
+                                isSuccess = true;
+                                log.debug("✅ Transaction thành công - result=SUCCESS");
+                            } else {
+                                log.debug("⏳ Transaction chưa có receipt hoặc result - vẫn pending");
+                            }
+
+                            if (isSuccess) {
+                                topup.setStatus(GasTopup.TopupStatus.CONFIRMED);
+                                gasTopupRepository.save(topup);
+
+                                log.info("✅ GasTopup confirmed: {} TRX to child #{} (ID: {}) - TxHash: {}",
+                                    topup.getAmountTrx(), topup.getChildIndex(), topup.getId(), topup.getTxHash());
+
+                            } else if ("FAILED".equals(result)) {
+                                topup.setStatus(GasTopup.TopupStatus.FAILED);
+                                gasTopupRepository.save(topup);
+
+                                log.warn("❌ GasTopup failed on blockchain: {} (ID: {}) - Result: FAILED",
+                                    topup.getTxHash(), topup.getId());
+
+                            } else {
+                                log.debug("⏳ GasTopup {} vẫn đang pending - Receipt: {}, ContractResult: {}",
+                                    topup.getTxHash(), receipt, contractResult);
+
+                                // Check timeout - nếu quá 20 phút thì retry
+                                if (topup.getCreatedAt().isBefore(LocalDateTime.now().minusMinutes(20))) {
+                                    log.warn("⚠️ GasTopup {} đã pending quá 20 phút, có thể cần retry",
+                                        topup.getTxHash());
+                                }
+                            }
+                        } else {
+                            log.warn("⚠️ Không lấy được transaction info cho GasTopup {}", topup.getTxHash());
+
+                            // Check timeout - nếu quá 30 phút và không có txInfo thì mark failed
+                            if (topup.getCreatedAt().isBefore(LocalDateTime.now().minusMinutes(30))) {
+                                topup.setStatus(GasTopup.TopupStatus.FAILED);
+                                gasTopupRepository.save(topup);
+
+                                log.error("❌ GasTopup {} timeout - Mark as FAILED", topup.getTxHash());
+                            }
+                        }
+                    } else {
+                        log.warn("⚠️ GasTopup ID {} có txHash không hợp lệ: {}", topup.getId(), topup.getTxHash());
+                    }
+                } catch (Exception e) {
+                    log.error("❌ Lỗi check confirmation cho GasTopup {}: {}",
+                        topup.getId(), e.getMessage(), e);
+                }
+            }
+
+        } catch (Exception e) {
+            log.error("❌ Lỗi confirm pending gas topups: {}", e.getMessage(), e);
+        }
     }
 }

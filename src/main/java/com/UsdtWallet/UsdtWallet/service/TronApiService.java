@@ -28,6 +28,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 @RequiredArgsConstructor
@@ -46,6 +48,24 @@ public class TronApiService {
     private String apiKey;
 
     private static final String API_KEY_HEADER = "TRON-PRO-API-KEY";
+
+    // Cache for block timestamps to avoid repeated API calls
+    private final Map<Long, Long> blockTimestampCache = new ConcurrentHashMap<>();
+
+    // Retry queue for failed broadcasts (simple in-memory implementation)
+    private final Map<String, BroadcastRetryInfo> retryQueue = new ConcurrentHashMap<>();
+
+    private static class BroadcastRetryInfo {
+        public final String signedTx;
+        public final long firstAttempt;
+        public int retryCount;
+
+        public BroadcastRetryInfo(String signedTx) {
+            this.signedTx = signedTx;
+            this.firstAttempt = System.currentTimeMillis();
+            this.retryCount = 0;
+        }
+    }
 
     /**
      * Get latest block number from Nile testnet
@@ -80,12 +100,37 @@ public class TronApiService {
     }
 
     /**
-     * Get USDT balance using Nile testnet TRC20 API
+     * Get USDT balance using TriggerConstantContract (prioritized) with getAccount fallback
      */
     public BigDecimal getUsdtBalance(String address) {
         try {
             log.debug("Getting USDT balance for address: {}", address);
 
+            // Priority 1: Use TriggerConstantContract for most accurate balance
+            BigDecimal constantContractBalance = getUsdtBalanceFromConstantContract(address);
+            if (constantContractBalance.compareTo(BigDecimal.ZERO) > 0) {
+                log.debug("USDT balance from triggerConstantContract: {} USDT", constantContractBalance);
+                return constantContractBalance;
+            }
+
+            // Priority 2: Fallback to getAccount (may have delay, use for cache only)
+            log.debug("Falling back to getAccount for USDT balance (may be delayed)");
+            BigDecimal accountBalance = getAccountTrc20Balance(address, usdtContractAddress);
+            log.debug("USDT balance from getAccount (cached): {} USDT", accountBalance);
+
+            return accountBalance;
+
+        } catch (Exception e) {
+            log.error("Error getting USDT balance for address: {} on Nile testnet", address, e);
+            return BigDecimal.ZERO;
+        }
+    }
+
+    /**
+     * Get USDT balance using TriggerConstantContract (most accurate)
+     */
+    private BigDecimal getUsdtBalanceFromConstantContract(String address) {
+        try {
             // Use TriggerConstantContract to call balanceOf function
             Map<String, Object> request = new HashMap<>();
             request.put("owner_address", "TLsV52sRDL79HXGGm9yzwKibb6BeruhUzy"); // Any address for constant call
@@ -120,15 +165,12 @@ public class TronApiService {
                         BigInteger balanceWei = new BigInteger(balanceHex, 16);
                         // USDT has 6 decimals on Tron
                         BigDecimal usdtBalance = new BigDecimal(balanceWei).divide(new BigDecimal("1000000"));
-                        log.debug("USDT balance for {}: {} USDT", address, usdtBalance);
                         return usdtBalance;
                     }
                 }
             }
-
-            log.debug("No USDT balance found for address: {}", address);
         } catch (Exception e) {
-            log.error("Error getting USDT balance for address: {} on Nile testnet", address, e);
+            log.error("Error calling triggerConstantContract for USDT balance: {}", e.getMessage());
         }
         return BigDecimal.ZERO;
     }
@@ -208,19 +250,20 @@ public class TronApiService {
     }
 
     /**
-     * Get TRC20 transactions for address using Nile testnet API
+     * Get TRC20 transactions for address using accurate block timestamps
      */
     public List<Map<String, Object>> getTransactionsInRange(String address, Long fromBlock, Long toBlock) {
         try {
-            // Convert block numbers to timestamps (approximate)
-            long fromTimestamp = fromBlock * 3000; // 3 seconds per block
-            long toTimestamp = toBlock * 3000;
+            // Get accurate timestamps from block headers instead of approximation
+            long fromTimestamp = getBlockTimestampAccurate(fromBlock);
+            long toTimestamp = getBlockTimestampAccurate(toBlock);
 
             String url = String.format(
                 "%s/v1/accounts/%s/transactions/trc20?limit=200&min_timestamp=%d&max_timestamp=%d&contract_address=%s",
                 tronApiUrl, address, fromTimestamp, toTimestamp, usdtContractAddress);
 
-            log.debug("Scanning Nile testnet transactions: {} (blocks {}-{})", address, fromBlock, toBlock);
+            log.debug("Scanning Nile testnet transactions: {} (blocks {}-{}, timestamps {}-{})",
+                address, fromBlock, toBlock, fromTimestamp, toTimestamp);
 
             HttpHeaders headers = createHeaders();
             HttpEntity<String> entity = new HttpEntity<>(headers);
@@ -231,8 +274,21 @@ public class TronApiService {
                 Object dataObj = response.getBody().get("data");
                 if (dataObj instanceof List) {
                     List<Map<String, Object>> transactions = (List<Map<String, Object>>) dataObj;
-                    log.debug("Found {} TRC20 transactions for address {}", transactions.size(), address);
-                    return transactions;
+
+                    // Filter transactions by SUCCESS status to avoid failed transactions
+                    List<Map<String, Object>> validTransactions = new ArrayList<>();
+                    for (Map<String, Object> tx : transactions) {
+                        String txId = (String) tx.get("transaction_id");
+                        if (isTransactionSuccessful(txId)) {
+                            validTransactions.add(tx);
+                        } else {
+                            log.debug("Filtered out failed transaction: {}", txId);
+                        }
+                    }
+
+                    log.debug("Found {} valid TRC20 transactions for address {} (filtered {} failed)",
+                        validTransactions.size(), address, transactions.size() - validTransactions.size());
+                    return validTransactions;
                 }
             }
         } catch (Exception e) {
@@ -242,9 +298,102 @@ public class TronApiService {
     }
 
     /**
-     * Broadcast transaction to Nile testnet
+     * Get accurate block timestamp using /wallet/getblockbynum API
+     */
+    private long getBlockTimestampAccurate(Long blockNumber) {
+        // Check cache first
+        if (blockTimestampCache.containsKey(blockNumber)) {
+            return blockTimestampCache.get(blockNumber);
+        }
+
+        try {
+            Map<String, Object> request = new HashMap<>();
+            request.put("num", blockNumber);
+
+            String url = tronApiUrl + "/wallet/getblockbynum";
+
+            HttpHeaders headers = createHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+
+            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(request, headers);
+            ResponseEntity<Map> response = restTemplate.exchange(url, HttpMethod.POST, entity, Map.class);
+
+            if (response.getStatusCode() == HttpStatus.OK && response.getBody() != null) {
+                Map<String, Object> blockHeader = (Map<String, Object>) response.getBody().get("block_header");
+                if (blockHeader != null) {
+                    Map<String, Object> rawData = (Map<String, Object>) blockHeader.get("raw_data");
+                    if (rawData != null) {
+                        Object timestampObj = rawData.get("timestamp");
+                        if (timestampObj instanceof Number) {
+                            long timestamp = ((Number) timestampObj).longValue();
+                            // Cache the result
+                            blockTimestampCache.put(blockNumber, timestamp);
+                            log.debug("Block {} accurate timestamp: {}", blockNumber, timestamp);
+                            return timestamp;
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Failed to get accurate timestamp for block {}, falling back to approximation: {}",
+                blockNumber, e.getMessage());
+        }
+
+        // Fallback to approximation if API fails
+        long approximateTimestamp = blockNumber * 3000;
+        blockTimestampCache.put(blockNumber, approximateTimestamp);
+        return approximateTimestamp;
+    }
+
+    /**
+     * Check if transaction was successful using gettransactioninfobyid
+     */
+    private boolean isTransactionSuccessful(String txId) {
+        try {
+            Map<String, Object> txInfo = getTransactionInfo(txId);
+            if (txInfo != null) {
+                Object resultObj = txInfo.get("result");
+                if (resultObj instanceof String) {
+                    return "SUCCESS".equals(resultObj);
+                }
+                // If no result field, assume success (for older transactions)
+                return !txInfo.containsKey("result") || txInfo.get("result") == null;
+            }
+        } catch (Exception e) {
+            log.debug("Could not verify transaction status for {}: {}", txId, e.getMessage());
+        }
+        // If we can't verify, assume success to avoid missing valid deposits
+        return true;
+    }
+
+    /**
+     * Broadcast transaction with retry mechanism
      */
     public String broadcastTransaction(String signedTransactionJson) {
+        String txHash = broadcastTransactionInternal(signedTransactionJson);
+
+        if (txHash == null) {
+            // Add to retry queue for later processing
+            String retryId = "retry_" + System.currentTimeMillis();
+            retryQueue.put(retryId, new BroadcastRetryInfo(signedTransactionJson));
+            log.warn("Transaction broadcast failed, added to retry queue: {}", retryId);
+
+            // Try immediate retry once
+            log.info("Attempting immediate retry for failed broadcast...");
+            txHash = broadcastTransactionInternal(signedTransactionJson);
+            if (txHash != null) {
+                retryQueue.remove(retryId);
+                log.info("✅ Immediate retry successful: {}", txHash);
+            }
+        }
+
+        return txHash;
+    }
+
+    /**
+     * Internal broadcast method without retry logic
+     */
+    private String broadcastTransactionInternal(String signedTransactionJson) {
         try {
             log.debug("Broadcasting signed transaction: {}", signedTransactionJson.substring(0, Math.min(200, signedTransactionJson.length())) + "...");
 
@@ -275,6 +424,45 @@ public class TronApiService {
             log.error("Error broadcasting transaction to Nile testnet: {}", e.getMessage(), e);
         }
         return null;
+    }
+
+    /**
+     * Process retry queue - should be called periodically
+     */
+    public void processRetryQueue() {
+        if (retryQueue.isEmpty()) {
+            return;
+        }
+
+        log.info("Processing {} items in broadcast retry queue", retryQueue.size());
+
+        retryQueue.entrySet().removeIf(entry -> {
+            String retryId = entry.getKey();
+            BroadcastRetryInfo retryInfo = entry.getValue();
+
+            // Skip if too old (24 hours)
+            if (System.currentTimeMillis() - retryInfo.firstAttempt > 24 * 60 * 60 * 1000) {
+                log.warn("Removing expired retry item: {}", retryId);
+                return true;
+            }
+
+            // Skip if too many retries
+            if (retryInfo.retryCount >= 5) {
+                log.warn("Removing retry item after {} attempts: {}", retryInfo.retryCount, retryId);
+                return true;
+            }
+
+            // Try broadcast again
+            retryInfo.retryCount++;
+            String txHash = broadcastTransactionInternal(retryInfo.signedTx);
+            if (txHash != null) {
+                log.info("✅ Retry broadcast successful after {} attempts: {}", retryInfo.retryCount, txHash);
+                return true; // Remove from queue
+            }
+
+            log.warn("Retry broadcast failed (attempt {}): {}", retryInfo.retryCount, retryId);
+            return false; // Keep in queue
+        });
     }
 
     /**
@@ -416,7 +604,7 @@ public class TronApiService {
     }
 
     /**
-     * Scan specific block range for transactions involving our addresses
+     * Scan specific block range for transactions involving our addresses with improved filtering
      */
     private List<Map<String, Object>> getTransactionsFromBlockRange(
             long fromBlock, long toBlock, Set<String> targetAddresses) {
@@ -440,6 +628,7 @@ public class TronApiService {
 
                     log.debug("TronGrid returned {} events for blocks {}-{}", events.size(), fromBlock, toBlock);
 
+                    int skippedCount = 0;
                     for (Map<String, Object> event : events) {
                         Map<String, Object> result = (Map<String, Object>) event.get("result");
                         if (result != null) {
@@ -448,15 +637,27 @@ public class TronApiService {
 
                             // CRITICAL FIX: Filter out events outside our requested block range
                             if (eventBlockNumber < fromBlock || eventBlockNumber > toBlock) {
-                                log.debug("Skipping event from block {} (outside range {}-{})",
-                                    eventBlockNumber, fromBlock, toBlock);
+                                skippedCount++;
+                                // Only log every 10th skip to reduce spam
+                                if (skippedCount % 10 == 1) {
+                                    log.debug("Skipping {} events from outside range {}-{} (showing every 10th)",
+                                        skippedCount, fromBlock, toBlock);
+                                }
                                 continue;
                             }
 
                             // Check if this transaction is for one of our addresses
                             if (targetAddresses.contains(toAddress)) {
+                                String txId = (String) event.get("transaction_id");
+
+                                // IMPROVED: Check transaction status to avoid failed transactions
+                                if (!isTransactionSuccessful(txId)) {
+                                    log.debug("Skipping failed transaction: {} in block {}", txId, eventBlockNumber);
+                                    continue;
+                                }
+
                                 Map<String, Object> txData = new HashMap<>();
-                                txData.put("transaction_id", event.get("transaction_id"));
+                                txData.put("transaction_id", txId);
                                 txData.put("from", result.get("from"));
                                 txData.put("to", toAddress);
                                 txData.put("value", result.get("value"));
@@ -466,11 +667,15 @@ public class TronApiService {
 
                                 transactions.add(txData);
                                 
-                                log.debug("Found valid deposit: {} USDT to {} in block {} (within range)",
+                                log.debug("Found valid deposit: {} USDT to {} in block {} (SUCCESS verified)",
                                     new BigDecimal(result.get("value").toString()).divide(new BigDecimal("1000000")),
                                     toAddress, eventBlockNumber);
                             }
                         }
+                    }
+
+                    if (skippedCount > 0) {
+                        log.debug("Total skipped {} events outside range {}-{}", skippedCount, fromBlock, toBlock);
                     }
                 }
             } else {
@@ -557,28 +762,63 @@ public class TronApiService {
     }
 
     /**
+     * Calculate safe fee limit based on TRX balance
+     */
+    private long calculateSafeFeeLimit(String fromAddress) {
+        try {
+            BigDecimal trxBalance = getTrxBalance(fromAddress);
+            // Use maximum 80% of TRX balance for fee, minimum 1 TRX, maximum 15 TRX
+            BigDecimal maxFeeInTrx = trxBalance.multiply(new BigDecimal("0.8"));
+
+            // Clamp between 1 and 15 TRX
+            if (maxFeeInTrx.compareTo(BigDecimal.ONE) < 0) {
+                maxFeeInTrx = BigDecimal.ONE;
+            } else if (maxFeeInTrx.compareTo(new BigDecimal("15")) > 0) {
+                maxFeeInTrx = new BigDecimal("15");
+            }
+
+            // Convert to sun (1 TRX = 1,000,000 sun)
+            long feeLimit = maxFeeInTrx.multiply(new BigDecimal("1000000")).longValue();
+
+            log.debug("Calculated safe fee limit: {} TRX ({} sun) based on balance {} TRX",
+                maxFeeInTrx, feeLimit, trxBalance);
+
+            return feeLimit;
+
+        } catch (Exception e) {
+            log.warn("Could not calculate safe fee limit, using default: {}", e.getMessage());
+            return 8_000_000; // 8 TRX default
+        }
+    }
+
+    /**
      * Create USDT transfer transaction using TronGrid API
      */
     public String createUsdtTransferTransaction(String fromAddress, String toAddress, BigDecimal amount) {
         try {
             log.info("Creating USDT transfer: {} USDT from {} to {}", amount, fromAddress, toAddress);
 
+            // Check TRX balance before creating transaction
+            BigDecimal trxBalance = getTrxBalance(fromAddress);
+            if (trxBalance.compareTo(new BigDecimal("1")) < 0) {
+                log.warn("⚠️ Low TRX balance ({} TRX) for USDT transfer from {}", trxBalance, fromAddress);
+            }
+
             // Convert USDT to smallest unit (6 decimals)
             BigInteger amountInWei = amount.multiply(new BigDecimal("1000000")).toBigInteger();
 
             // Create TRC20 transfer function call
-            // transfer(address,uint256) = a9059cbb
             String methodId = "a9059cbb";
 
-            // Convert Base58 to hex (có prefix 41 hoặc A0 tùy mạng)
+            // Convert Base58 to hex
             String toAddressHex = TronAddressUtil.base58ToHex(toAddress);
             if (toAddressHex.startsWith("0x")) {
                 toAddressHex = toAddressHex.substring(2);
             }
 
-            // ABI chỉ nhận 20 byte cuối (40 hex chars)
+            // ABI only accepts last 20 bytes (40 hex chars)
             if (toAddressHex.length() == 42) {
-                toAddressHex = toAddressHex.substring(2); // bỏ 2 byte prefix (41 hoặc A0)
+                toAddressHex = toAddressHex.substring(2); // remove 2 byte prefix (41 or A0)
             }
 
             String paddedToAddress = String.format("%64s", toAddressHex).replace(' ', '0');
@@ -587,20 +827,20 @@ public class TronApiService {
             String amountHex = amountInWei.toString(16);
             String paddedAmount = String.format("%64s", amountHex).replace(' ', '0');
 
-            //  CHỈ tham số (không có selector)
+            // Only parameters (without selector)
             String parameter = paddedToAddress + paddedAmount;
+
+            // Calculate safe fee limit based on actual TRX balance
+            long safeFeeLimit = calculateSafeFeeLimit(fromAddress);
 
             Map<String, Object> request = new HashMap<>();
             request.put("owner_address", fromAddress);
             request.put("contract_address", usdtContractAddress);
             request.put("function_selector", "transfer(address,uint256)");
             request.put("parameter", parameter);
-            request.put("fee_limit", 15000000); // 15 TRX fee limit
+            request.put("fee_limit", safeFeeLimit);
             request.put("call_value", 0);
             request.put("visible", true);
-
-            // Gợi ý fee_limit an toàn khi ví con có 10 TRX (nên < số dư):
-            request.put("fee_limit", 8_000_000);
 
             String url = tronApiUrl + "/wallet/triggersmartcontract";
 
@@ -613,7 +853,8 @@ public class TronApiService {
             if (response.getStatusCode() == HttpStatus.OK && response.getBody() != null) {
                 Object transactionObj = response.getBody().get("transaction");
                 if (transactionObj != null) {
-                    log.debug("USDT transaction created successfully");
+                    log.debug("USDT transaction created successfully with fee limit: {} TRX",
+                        safeFeeLimit / 1_000_000.0);
 
                     // Convert transaction object to JSON string
                     ObjectMapper mapper = new ObjectMapper();

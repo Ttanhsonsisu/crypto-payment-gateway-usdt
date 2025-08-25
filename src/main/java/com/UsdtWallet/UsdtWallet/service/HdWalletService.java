@@ -381,25 +381,42 @@ public class HdWalletService {
     }
 
     /**
-     * Get private key for child wallet address
+     * Get child index by address
+     */
+    public Integer getChildIndexByAddress(String address) {
+        try {
+            Optional<ChildWalletPool> childWallet = childWalletPoolRepository.findByAddress(address);
+            if (childWallet.isPresent()) {
+                return childWallet.get().getDerivationIndex();
+            }
+
+            log.warn("Không tìm thấy child index cho address: {}", address);
+            return null;
+
+        } catch (Exception e) {
+            log.error("Lỗi lấy child index cho address {}: {}", address, e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Get private key for address - CẦN THIẾT CHO SIGNING TRANSACTIONS
      */
     public String getPrivateKeyForAddress(String address) {
         try {
-            // Get wallet info from database
-            Optional<ChildWalletPool> walletOpt = childWalletPoolRepository.findByAddress(address);
-            if (walletOpt.isEmpty()) {
-                throw new RuntimeException("Child wallet not found: " + address);
+            Optional<ChildWalletPool> childWallet = childWalletPoolRepository.findByAddress(address);
+            if (childWallet.isPresent()) {
+                Integer derivationIndex = childWallet.get().getDerivationIndex();
+                // Sử dụng getPrivateKeyForIndex thay vì derivePrivateKey
+                return getPrivateKeyForIndex(derivationIndex);
             }
 
-            ChildWalletPool wallet = walletOpt.get();
-            int index = wallet.getDerivationIndex();
-
-            log.debug("Getting private key for address {} at index {}", address, index);
-            return getPrivateKeyForIndex(index);
+            log.error("Không tìm thấy private key cho address: {}", address);
+            return null;
 
         } catch (Exception e) {
-            log.error("Error getting private key for address {}: {}", address, e.getMessage());
-            throw new RuntimeException("Failed to get private key for address: " + address);
+            log.error("Lỗi lấy private key cho address {}: {}", address, e.getMessage());
+            return null;
         }
     }
 }

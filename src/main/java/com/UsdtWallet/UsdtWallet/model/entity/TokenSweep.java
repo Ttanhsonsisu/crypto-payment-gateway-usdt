@@ -55,6 +55,9 @@ public class TokenSweep {
     private LocalDateTime updatedAt;
 
     public enum SweepStatus {
-        PENDING, SENT, CONFIRMED, FAILED
+        PENDING,     // Đã tạo record, chưa broadcast
+        SENT,        // Đã broadcast, chờ confirm
+        CONFIRMED,   // Transaction confirmed trên blockchain
+        FAILED       // Có lỗi xảy ra
     }
 }

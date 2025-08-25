@@ -34,6 +34,7 @@ public class DepositScannerService {
     @Qualifier("customStringRedisTemplate")
     private final RedisTemplate<String, String> customStringRedisTemplate; // Updated bean name
     private final PointsService pointsService;
+    private final UsdtSweepService usdtSweepService; // Add sweep service
 
     @Value("${deposit.scanner.confirmations.required:3}")
     private Integer requiredConfirmations;
@@ -231,7 +232,7 @@ public class DepositScannerService {
                     .atZone(java.time.ZoneId.systemDefault())
                     .toLocalDateTime();
 
-            // Create transaction record (store Base58 addresses)
+            // Create transaction record with PENDING status (NOT credit points yet)
             WalletTransaction transaction = WalletTransaction.builder()
                 .txHash(txHash)
                 .fromAddress(fromAddressBase58)
@@ -241,8 +242,8 @@ public class DepositScannerService {
                 .blockNumber(blockNumber)
                 .blockTimestamp(transactionTime)
                 .transactionType(WalletTransaction.TransactionType.DEPOSIT)
-                .status(WalletTransaction.TransactionStatus.CONFIRMED)
-                .direction(WalletTransaction.TransactionDirection.IN) // Change to IN for deposit
+                .status(WalletTransaction.TransactionStatus.PENDING) // PENDING until swept
+                .direction(WalletTransaction.TransactionDirection.IN)
                 .userId(userId)
                 .confirmationCount(requiredConfirmations)
                 .build();
@@ -255,11 +256,11 @@ public class DepositScannerService {
                 childWalletPoolRepository.save(childWallet.get());
             }
 
-            log.info("💰 New deposit detected: {} USDT from {} to {} (User: {})",
+            log.info("💰 New deposit detected: {} USDT from {} to {} (User: {}) - PENDING sweep",
                 amount, fromAddressBase58, toAddressBase58, userId);
 
-            // Async credit points to user
-            creditPointsForDeposit(transaction);
+            // Trigger sweep immediately - points will be credited AFTER successful sweep
+            usdtSweepService.triggerSweepWithPointsCredit(transaction);
 
             return true;
 
@@ -269,38 +270,6 @@ public class DepositScannerService {
         }
     }
 
-    /**
-     * Credit points to user for deposit (async)
-     */
-    @Async
-    public void creditPointsForDeposit(WalletTransaction transaction) {
-        try {
-            // Credit points to user (1 USDT = 1 Point by default)
-            BigDecimal pointsToCredit = transaction.getAmount();
-
-            boolean success = pointsService.creditPointsForDeposit(
-                transaction.getUserId(),
-                pointsToCredit,
-                String.valueOf(transaction.getId()), // Convert Long to String
-                transaction.getAmount()
-            );
-
-            if (success) {
-                // Update transaction with points credited
-                transaction.setPointsCredited(pointsToCredit);
-                transaction.setPointsCreditedAt(LocalDateTime.now());
-                walletTransactionRepository.save(transaction);
-
-                log.info("✅ Credited {} points to user {} for deposit {}",
-                    pointsToCredit, transaction.getUserId(), transaction.getTxHash());
-            } else {
-                log.error("❌ Failed to credit points for deposit {}", transaction.getTxHash());
-            }
-
-        } catch (Exception e) {
-            log.error("Error crediting points for deposit {}", transaction.getTxHash(), e);
-        }
-    }
 
     /**
      * Manual scan for specific address
