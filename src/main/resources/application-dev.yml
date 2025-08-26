@@ -43,6 +43,10 @@ spring:
 
 # HD Wallet Configuration for dev
 wallet:
+  encryption:
+    # Secret key for AES-256 encryption (USE ENVIRONMENT VARIABLE)
+    secret: ${WALLET_ENCRYPTION_SECRET:aPV766seKZwuXNNf71b8eh0S9i0RxG3l6cw+ocntIKI=}
+
   mnemonic:
     seed: ${WALLET_MNEMONIC_SEED:} # Will generate new if empty
 

@@ -5,6 +5,7 @@ import com.UsdtWallet.UsdtWallet.model.entity.HdMasterWallet;
 import com.UsdtWallet.UsdtWallet.repository.ChildWalletPoolRepository;
 import com.UsdtWallet.UsdtWallet.repository.HdMasterWalletRepository;
 import com.UsdtWallet.UsdtWallet.util.TronAddressUtil;
+import com.UsdtWallet.UsdtWallet.util.EncryptionUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
@@ -16,6 +17,7 @@ import org.springframework.web.client.RestTemplate;
 import jakarta.annotation.PostConstruct;
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
 import java.util.Optional;
 import java.util.Map;
@@ -30,8 +32,9 @@ public class HdWalletService {
     private final ChildWalletPoolRepository childWalletPoolRepository;
     private final RedisTemplate<String, String> redisTemplate;
     private final RestTemplate restTemplate = new RestTemplate();
+    private final EncryptionUtil encryptionUtil;
 
-    @Value("${wallet.mnemonic.seed}")
+    @Value("${wallet.mnemonic.seed:}")
     private String mnemonicSeed;
 
     @Value("${wallet.pool.initialSize:1000}")
@@ -57,11 +60,13 @@ public class HdWalletService {
             TronAddressUtil tronAddressUtil,
             HdMasterWalletRepository masterWalletRepository,
             ChildWalletPoolRepository childWalletPoolRepository,
-            @Qualifier("customStringRedisTemplate") RedisTemplate<String, String> redisTemplate) {
+            @Qualifier("customStringRedisTemplate") RedisTemplate<String, String> redisTemplate,
+            EncryptionUtil encryptionUtil) {
         this.tronAddressUtil = tronAddressUtil;
         this.masterWalletRepository = masterWalletRepository;
         this.childWalletPoolRepository = childWalletPoolRepository;
         this.redisTemplate = redisTemplate;
+        this.encryptionUtil = encryptionUtil;
     }
 
     @PostConstruct
@@ -365,19 +370,72 @@ public class HdWalletService {
     public record PoolStats(long total, long free, long assigned, long active) {}
 
     /**
-     * Temporary encryption (replace with proper encryption in production)
+     * Mã hóa mnemonic với AES-256-GCM
      */
     private String encryptMnemonic(String mnemonic) {
-        // TODO: Implement proper AES encryption or use HSM/Vault
-        return "encrypted_" + mnemonic;
+        try {
+            return encryptionUtil.encrypt(mnemonic);
+        } catch (Exception e) {
+            log.error("Failed to encrypt mnemonic", e);
+            throw new RuntimeException("Mnemonic encryption failed", e);
+        }
     }
 
     /**
-     * Temporary decryption (replace with proper decryption in production)
+     * Giải mã mnemonic từ chuỗi đã mã hóa
      */
     private String decryptMnemonic(String encryptedMnemonic) {
-        // TODO: Implement proper AES decryption or use HSM/Vault
-        return encryptedMnemonic.replace("encrypted_", "");
+        try {
+            // Kiểm tra xem có phải là mnemonic đã được encrypt ko
+            if (isValidEncryptedData(encryptedMnemonic)) {
+                // Decrypt với AES-256-GCM
+                return encryptionUtil.decrypt(encryptedMnemonic);
+            } else {
+                // mnemonic cũ chưa được encrypt (plain text)
+                log.warn("Found legacy unencrypted mnemonic in database. Will re-encrypt on next update.");
+
+                // Kiểm tra xem có là mnemonic hợp lệ ko
+                if (isValidMnemonic(encryptedMnemonic)) {
+                    return encryptedMnemonic;
+                } else {
+                    throw new RuntimeException("Invalid mnemonic format in database");
+                }
+            }
+        } catch (Exception e) {
+            log.error("Failed to decrypt mnemonic", e);
+            throw new RuntimeException("Mnemonic decryption failed", e);
+        }
+    }
+
+    /**
+     * Kiểm tra xem data có là encrypted data hợp lệ ko
+     */
+    private boolean isValidEncryptedData(String data) {
+        try {
+            // Kiểm tra Base64 hợp lệ
+            Base64.getDecoder().decode(data);
+
+            // Kiểm tra độ dài tối thiểu
+            byte[] decoded = Base64.getDecoder().decode(data);
+            return decoded.length >= (12 + 16 + 1);
+
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * Kiểm tra xem có là mnemonic phrase hợp lệ ko
+     */
+    private boolean isValidMnemonic(String mnemonic) {
+        if (mnemonic == null || mnemonic.trim().isEmpty()) {
+            return false;
+        }
+
+        String[] words = mnemonic.trim().split("\\s+");
+        // Mnemonic thường có 12, 15, 18, 21 hoặc 24 từ
+        return words.length == 12 || words.length == 15 || words.length == 18 ||
+               words.length == 21 || words.length == 24;
     }
 
     /**
@@ -400,7 +458,7 @@ public class HdWalletService {
     }
 
     /**
-     * Get private key for address - CẦN THIẾT CHO SIGNING TRANSACTIONS
+     * Get private key for address
      */
     public String getPrivateKeyForAddress(String address) {
         try {

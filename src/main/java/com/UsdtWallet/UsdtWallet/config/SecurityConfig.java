@@ -29,7 +29,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/admin/wallet/**").permitAll() // Temporary for testing
                 .requestMatchers("/api/test/**").permitAll() // Allow all test endpoints
                 .requestMatchers("/api/points/**").permitAll() // Temporary for testing points endpoints
-
+                .requestMatchers("/api/dev/**").permitAll() // Allow dev endpoints for development
 
                 // Health check endpoints
                 .requestMatchers("/actuator/**").permitAll()

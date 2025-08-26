@@ -56,22 +56,26 @@ tron:
     name: nile
     fullHost: https://nile.trongrid.io
     apiKey: ${TRON_API_KEY:bf5a9e49-d910-4283-8a5b-9669d41281b9}
-
   contracts:
     usdt: TG3XXyExBkPp9nzdajDZsozEu4BkaSJozs  # USDT on Nile testnet
 
-# HD Wallet Configuration
+# HD Wallet Security Configuration
 wallet:
+  encryption:
+    # Secret key for AES-256 encryption (REQUIRED in production)
+    secret: ${WALLET_ENCRYPTION_SECRET:default-dev-key-change-in-production}
+
   mnemonic:
-    seed: ${WALLET_MNEMONIC_SEED:} # Will generate new if empty
+    # Mnemonic seed (set via environment variable in production)
+    seed: ${WALLET_MNEMONIC_SEED:}
 
   pool:
-    initialSize: 1000  # Generate 1000 child wallets on startup
-    minThreshold: 200  # Minimum free wallets before generating more
-    batchSize: 500     # How many to generate at once when needed
+    initialSize: 1000     # Generate 1000 child wallets on startup
+    minThreshold: 200     # Minimum free wallets before generating more
+    batchSize: 500        # How many to generate at once when needed
 
   master:
-    minTrxBalance: 100 # Minimum TRX balance required for master wallet
+    minTrxBalance: 100    # Minimum TRX balance required for master wallet
 
 # Logging
 logging:
