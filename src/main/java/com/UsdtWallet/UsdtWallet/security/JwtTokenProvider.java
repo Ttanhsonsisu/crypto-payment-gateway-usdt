@@ -75,4 +75,20 @@ public class JwtTokenProvider {
     public Long getExpirationTime() {
         return jwtExpirationInMs;
     }
+
+    /**
+     * Create token with user details
+     */
+    public String createToken(java.util.UUID userId, String username, String role) {
+        Date expiryDate = new Date(System.currentTimeMillis() + jwtExpirationInMs);
+
+        return Jwts.builder()
+                .setSubject(username)
+                .claim("userId", userId.toString())
+                .claim("role", role)
+                .setIssuedAt(new Date())
+                .setExpiration(expiryDate)
+                .signWith(getSigningKey(), SignatureAlgorithm.HS512)
+                .compact();
+    }
 }

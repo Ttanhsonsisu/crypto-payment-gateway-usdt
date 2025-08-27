@@ -25,10 +25,13 @@ public class SecurityConfig {
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(authz -> authz
                 // Public endpoints - không cần authentication
-                .requestMatchers("/api/auth/**").permitAll()
+                .requestMatchers("/api/auth/register").permitAll()
+                .requestMatchers("/api/auth/login").permitAll()
+                .requestMatchers("/api/auth/check-username").permitAll()
+                .requestMatchers("/api/auth/check-email").permitAll()
+                .requestMatchers("/api/auth/create-admin").permitAll() // Allow admin creation
                 .requestMatchers("/api/admin/wallet/**").permitAll() // Temporary for testing
                 .requestMatchers("/api/test/**").permitAll() // Allow all test endpoints
-                .requestMatchers("/api/points/**").permitAll() // Temporary for testing points endpoints
                 .requestMatchers("/api/dev/**").permitAll() // Allow dev endpoints for development
 
                 // Health check endpoints

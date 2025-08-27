@@ -50,7 +50,6 @@ public class PointsService {
             BigDecimal newBalance = currentBalance.add(pointsAmount);
 
             PointsLedger ledgerEntry = PointsLedger.builder()
-                .id(java.util.UUID.randomUUID().toString()) // THÊM DÒNG NÀY
                 .userId(userId)
                 .transactionId(transactionId)
                 .transactionType(PointsLedger.PointsTransactionType.DEPOSIT_CREDIT)
@@ -216,12 +215,96 @@ public class PointsService {
     }
 
     /**
+     * Deduct points for withdrawal
+     */
+    @Transactional
+    public boolean deductPoints(String userId, BigDecimal amount, String description) {
+        try {
+            log.info("Deducting {} points from user: {}", amount, userId);
+
+            BigDecimal currentBalance = getCurrentBalance(userId);
+            if (currentBalance.compareTo(amount) < 0) {
+                throw new RuntimeException("Insufficient balance. Available: " + currentBalance + ", Required: " + amount);
+            }
+
+            BigDecimal newBalance = currentBalance.subtract(amount);
+
+            // Create debit entry
+            PointsLedger debitEntry = PointsLedger.builder()
+                .userId(userId)
+                .transactionType(PointsLedger.PointsTransactionType.WITHDRAWAL_DEBIT)
+                .amount(amount.negate()) // Negative for debit
+                .balanceBefore(currentBalance)
+                .balanceAfter(newBalance)
+                .description(description)
+                .transactionId("WITHDRAWAL_" + System.currentTimeMillis())
+                .status(PointsLedger.PointsTransactionStatus.COMPLETED)
+                .build();
+
+            pointsLedgerRepository.save(debitEntry);
+
+            // Update cache
+            updateBalanceCache(userId, newBalance);
+
+            log.info("Successfully deducted {} points from user: {}, new balance: {}",
+                amount, userId, newBalance);
+            return true;
+
+        } catch (Exception e) {
+            log.error("Error deducting points for user: {}", userId, e);
+            throw new RuntimeException("Failed to deduct points: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Add points (for refunds, bonuses, etc.)
+     */
+    @Transactional
+    public boolean addPoints(String userId, BigDecimal amount, String description) {
+        try {
+            log.info("Adding {} points to user: {}", amount, userId);
+
+            BigDecimal currentBalance = getCurrentBalance(userId);
+            BigDecimal newBalance = currentBalance.add(amount);
+
+            // Create credit entry
+            PointsLedger creditEntry = PointsLedger.builder()
+                .userId(userId)
+                .transactionType(PointsLedger.PointsTransactionType.ADJUSTMENT)
+                .amount(amount)
+                .balanceBefore(currentBalance)
+                .balanceAfter(newBalance)
+                .description(description)
+                .transactionId("CREDIT_" + System.currentTimeMillis())
+                .status(PointsLedger.PointsTransactionStatus.COMPLETED)
+                .build();
+
+            pointsLedgerRepository.save(creditEntry);
+
+            // Update cache
+            updateBalanceCache(userId, newBalance);
+
+            log.info("Successfully added {} points to user: {}, new balance: {}",
+                amount, userId, newBalance);
+            return true;
+
+        } catch (Exception e) {
+            log.error("Error adding points for user: {}", userId, e);
+            throw new RuntimeException("Failed to add points: " + e.getMessage());
+        }
+    }
+
+    /**
      * Update balance cache
      */
     private void updateBalanceCache(String userId, BigDecimal newBalance) {
         try {
-            String cacheKey = BALANCE_CACHE_KEY + userId;
-            redisTemplate.opsForValue().set(cacheKey, newBalance, 10, TimeUnit.MINUTES);
+            redisTemplate.opsForValue().set(
+                BALANCE_CACHE_KEY + userId,
+                newBalance.toString(),
+                30,
+                TimeUnit.MINUTES
+            );
         } catch (Exception e) {
             log.warn("Failed to update balance cache for user: {}", userId, e);
         }

@@ -7,15 +7,16 @@ import org.springframework.stereotype.Repository;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 @Repository
-public interface ChildWalletPoolRepository extends JpaRepository<ChildWalletPool, Long> {
+public interface ChildWalletPoolRepository extends JpaRepository<ChildWalletPool, UUID> {
 
     Optional<ChildWalletPool> findByAddress(String address);
 
     Optional<ChildWalletPool> findByDerivationIndex(Integer derivationIndex);
 
-    Optional<ChildWalletPool> findByUserId(Long userId);
+    Optional<ChildWalletPool> findByUserId(UUID userId);
 
     Optional<ChildWalletPool> findFirstByStatusOrderByIdAsc(ChildWalletPool.WalletStatus status);
 

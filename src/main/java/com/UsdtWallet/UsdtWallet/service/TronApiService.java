@@ -898,4 +898,39 @@ public class TronApiService {
             throw new RuntimeException("Transaction signing failed: " + e.getMessage(), e);
         }
     }
+
+    /**
+     * Convert TRON address to hex format
+     */
+    public String addressToHex(String address) {
+        try {
+            // Remove T prefix and convert base58 to hex
+            if (!address.startsWith("T")) {
+                throw new IllegalArgumentException("Invalid TRON address format");
+            }
+
+            // Decode base58 address
+            byte[] decoded = org.bitcoinj.core.Base58.decode(address);
+
+            // Remove checksum (last 4 bytes) and convert to hex
+            byte[] addressBytes = java.util.Arrays.copyOfRange(decoded, 0, decoded.length - 4);
+
+            // Convert to hex and remove 0x41 prefix (first byte is 0x41 for TRON mainnet)
+            String hex = org.bouncycastle.util.encoders.Hex.toHexString(addressBytes);
+            if (hex.startsWith("41")) {
+                hex = hex.substring(2); // Remove 41 prefix
+            }
+
+            // Pad to 40 characters (20 bytes) if needed
+            while (hex.length() < 40) {
+                hex = "0" + hex;
+            }
+
+            return "0x" + hex;
+
+        } catch (Exception e) {
+            log.error("Failed to convert address {} to hex", address, e);
+            throw new RuntimeException("Address conversion failed: " + e.getMessage());
+        }
+    }
 }

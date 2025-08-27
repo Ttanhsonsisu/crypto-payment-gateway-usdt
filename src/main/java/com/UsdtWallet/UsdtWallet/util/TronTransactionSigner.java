@@ -14,6 +14,7 @@ import lombok.extern.slf4j.Slf4j;
 import java.math.BigInteger;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
+import java.util.Map;
 
 @Slf4j
 public class TronTransactionSigner {
@@ -202,6 +203,76 @@ public class TronTransactionSigner {
         } catch (Exception e) {
             log.debug("Signature verification failed: {}", e.getMessage());
             return false;
+        }
+    }
+
+    /** Create and sign USDT transfer transaction */
+    public static String createTransaction(String fromAddress, String contractAddress,
+                                         Map<String, Object> txParams, String privateKey) {
+        try {
+            log.info("Creating USDT transfer transaction from {} to contract {}", fromAddress, contractAddress);
+
+            // Extract parameters
+            String parameter = (String) txParams.get("parameter");
+            Long feeLimit = (Long) txParams.get("fee_limit");
+
+            // Create raw transaction JSON structure
+            ObjectNode transaction = mapper.createObjectNode();
+            ObjectNode rawData = mapper.createObjectNode();
+
+            // Set transaction details
+            rawData.put("ref_block_bytes", "0000");
+            rawData.put("ref_block_hash", "0000000000000000");
+            rawData.put("expiration", System.currentTimeMillis() + 60000); // 1 minute expiration
+            rawData.put("fee_limit", feeLimit != null ? feeLimit : 50000000L);
+            rawData.put("timestamp", System.currentTimeMillis());
+
+            // Create contract array
+            ArrayNode contracts = mapper.createArrayNode();
+            ObjectNode contract = mapper.createObjectNode();
+            contract.put("type", "TriggerSmartContract");
+
+            ObjectNode contractParam = mapper.createObjectNode();
+            ObjectNode value = mapper.createObjectNode();
+            value.put("owner_address", fromAddress);
+            value.put("contract_address", contractAddress);
+            value.put("data", parameter);
+            value.put("call_value", 0);
+
+            contractParam.set("value", value);
+            contractParam.put("type_url", "type.googleapis.com/protocol.TriggerSmartContract");
+            contract.set("parameter", contractParam);
+
+            contracts.add(contract);
+            rawData.set("contract", contracts);
+
+            transaction.set("raw_data", rawData);
+
+            // Convert to hex for signing
+            String rawDataHex = convertRawDataToHex(rawData);
+            transaction.put("raw_data_hex", rawDataHex);
+
+            // Sign the transaction
+            String signedTx = signTransaction(transaction.toString(), privateKey);
+
+            log.info("Transaction created and signed successfully");
+            return signedTx;
+
+        } catch (Exception e) {
+            log.error("Failed to create transaction", e);
+            throw new RuntimeException("Transaction creation failed: " + e.getMessage());
+        }
+    }
+
+    /** Convert raw data to hex format */
+    private static String convertRawDataToHex(ObjectNode rawData) {
+        // This is a simplified implementation
+        // In production, you would use proper protobuf serialization
+        try {
+            String rawDataJson = mapper.writeValueAsString(rawData);
+            return Hex.toHexString(rawDataJson.getBytes());
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to convert raw data to hex", e);
         }
     }
 

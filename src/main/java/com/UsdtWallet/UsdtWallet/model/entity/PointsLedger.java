@@ -19,7 +19,8 @@ import java.time.LocalDateTime;
 public class PointsLedger {
 
     @Id
-    @Column(name = "id", length = 36)
+    @GeneratedValue(strategy = GenerationType.UUID)
+    @Column(name = "id", length = 36, updatable = false, nullable = false)
     private String id;
 
     @Column(name = "user_id", nullable = false)

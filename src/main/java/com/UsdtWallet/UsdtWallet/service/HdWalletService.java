@@ -263,7 +263,7 @@ public class HdWalletService {
 
         if (freeWallet.isPresent()) {
             ChildWalletPool wallet = freeWallet.get();
-            wallet.setUserId(userId.getMostSignificantBits()); // Fix: store full UUID as Long
+            wallet.setUserId(userId); // Lưu UUID trực tiếp
             wallet.setStatus(ChildWalletPool.WalletStatus.ASSIGNED);
 
             ChildWalletPool saved = childWalletPoolRepository.save(wallet);
@@ -284,7 +284,7 @@ public class HdWalletService {
     /**
      * Get wallet by user ID
      */
-    public ChildWalletPool getWalletByUserId(Long userId) {
+    public ChildWalletPool getWalletByUserId(UUID userId) {
         return childWalletPoolRepository.findByUserId(userId).orElse(null);
     }
 

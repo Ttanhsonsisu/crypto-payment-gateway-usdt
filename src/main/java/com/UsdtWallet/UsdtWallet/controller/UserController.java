@@ -236,17 +236,170 @@ public class UserController {
     }
 
     /**
-     * Simple test endpoint
+     * Get user wallet address and balance info
      */
-    @GetMapping("/test")
-    public ResponseEntity<Map<String, Object>> testEndpoint() {
-        log.info("=== TEST ENDPOINT CALLED ===");
-        Map<String, Object> response = Map.of(
-            "status", "OK",
-            "message", "API is working",
-            "timestamp", System.currentTimeMillis()
-        );
-        log.info("Test response: {}", response);
-        return ResponseEntity.ok(response);
+    @GetMapping("/wallet")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getUserWallet(
+            @AuthenticationPrincipal UserPrincipal userPrincipal) {
+        try {
+            String walletAddress = userService.getUserWalletAddress(userPrincipal.getId());
+
+            if (walletAddress != null) {
+                Map<String, Object> result = userService.getUserWalletInfo(userPrincipal.getId());
+                return ResponseEntity.ok(ApiResponse.success(result));
+            } else {
+                return ResponseEntity.badRequest()
+                    .body(ApiResponse.<Map<String, Object>>builder()
+                        .success(false)
+                        .message("No wallet assigned to user")
+                        .build());
+            }
+
+        } catch (Exception e) {
+            log.error("Error getting user wallet: {}", e.getMessage());
+            return ResponseEntity.badRequest()
+                .body(ApiResponse.<Map<String, Object>>builder()
+                    .success(false)
+                    .message("Failed to get wallet info: " + e.getMessage())
+                    .build());
+        }
+    }
+
+    /**
+     * Get user deposit address for QR code
+     */
+    @GetMapping("/deposit-address")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getDepositAddress(
+            @AuthenticationPrincipal UserPrincipal userPrincipal) {
+        try {
+            String walletAddress = userService.getUserWalletAddress(userPrincipal.getId());
+
+            Map<String, Object> result = Map.of(
+                "userId", userPrincipal.getId().toString(),
+                "depositAddress", walletAddress,
+                "network", "TRC20",
+                "token", "USDT",
+                "note", "Only send USDT (TRC20) to this address"
+            );
+
+            return ResponseEntity.ok(ApiResponse.success(result));
+
+        } catch (Exception e) {
+            log.error("Error getting deposit address: {}", e.getMessage());
+            return ResponseEntity.badRequest()
+                .body(ApiResponse.<Map<String, Object>>builder()
+                    .success(false)
+                    .message("Failed to get deposit address: " + e.getMessage())
+                    .build());
+        }
+    }
+
+    /**
+     * Get user transaction history
+     */
+    @GetMapping("/transactions")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getUserTransactions(
+            @AuthenticationPrincipal UserPrincipal userPrincipal,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        try {
+            Map<String, Object> transactions = userService.getUserTransactions(
+                userPrincipal.getId(), page, size);
+
+            return ResponseEntity.ok(ApiResponse.success(transactions));
+
+        } catch (Exception e) {
+            log.error("Error getting user transactions: {}", e.getMessage());
+            return ResponseEntity.badRequest()
+                .body(ApiResponse.<Map<String, Object>>builder()
+                    .success(false)
+                    .message("Failed to get transactions: " + e.getMessage())
+                    .build());
+        }
+    }
+
+    /**
+     * Create admin account (one-time setup endpoint)
+     */
+    @PostMapping("/create-admin")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> createAdmin(
+            @RequestBody CreateAdminRequest request) {
+        try {
+            log.info("=== CREATE ADMIN REQUEST ===");
+            log.info("Username: {}", request.getUsername());
+            log.info("Email: {}", request.getEmail());
+            log.info("Full Name: {}", request.getFullName());
+            log.info("Password length: {}", request.getPassword() != null ? request.getPassword().length() : "null");
+
+            // Validate request
+            if (request.getUsername() == null || request.getUsername().trim().isEmpty()) {
+                log.error("Username is null or empty");
+                return ResponseEntity.badRequest()
+                    .body(ApiResponse.<Map<String, Object>>builder()
+                        .success(false)
+                        .message("Username is required")
+                        .build());
+            }
+
+            if (request.getPassword() == null || request.getPassword().trim().isEmpty()) {
+                log.error("Password is null or empty");
+                return ResponseEntity.badRequest()
+                    .body(ApiResponse.<Map<String, Object>>builder()
+                        .success(false)
+                        .message("Password is required")
+                        .build());
+            }
+
+            if (request.getEmail() == null || request.getEmail().trim().isEmpty()) {
+                log.error("Email is null or empty");
+                return ResponseEntity.badRequest()
+                    .body(ApiResponse.<Map<String, Object>>builder()
+                        .success(false)
+                        .message("Email is required")
+                        .build());
+            }
+
+            Map<String, Object> result = userService.createAdminAccount(
+                request.getUsername(),
+                request.getPassword(),
+                request.getEmail(),
+                request.getFullName()
+            );
+
+            log.info("Admin account created via API: {}", request.getUsername());
+
+            return ResponseEntity.ok(ApiResponse.success("Admin account created successfully", result));
+
+        } catch (Exception e) {
+            log.error("Failed to create admin account - Exception type: {}", e.getClass().getSimpleName());
+            log.error("Failed to create admin account - Message: {}", e.getMessage());
+            log.error("Failed to create admin account - Stack trace: ", e);
+            return ResponseEntity.badRequest()
+                .body(ApiResponse.<Map<String, Object>>builder()
+                    .success(false)
+                    .message("Failed to create admin account: " + (e.getMessage() != null ? e.getMessage() : "Unknown error"))
+                    .build());
+        }
+    }
+
+    // DTO class for admin creation request
+    public static class CreateAdminRequest {
+        private String username;
+        private String password;
+        private String email;
+        private String fullName;
+
+        // Getters and setters
+        public String getUsername() { return username; }
+        public void setUsername(String username) { this.username = username; }
+
+        public String getPassword() { return password; }
+        public void setPassword(String password) { this.password = password; }
+
+        public String getEmail() { return email; }
+        public void setEmail(String email) { this.email = email; }
+
+        public String getFullName() { return fullName; }
+        public void setFullName(String fullName) { this.fullName = fullName; }
     }
 }

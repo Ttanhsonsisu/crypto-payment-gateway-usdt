@@ -8,6 +8,7 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 @Entity
 @Table(name = "child_wallet_pool")
@@ -31,7 +32,7 @@ public class ChildWalletPool {
     private WalletStatus status = WalletStatus.FREE;
 
     @Column(name = "user_id")
-    private Long userId;
+    private UUID userId;
 
     @Column(name = "first_deposit_at")
     private LocalDateTime firstDepositAt;

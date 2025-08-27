@@ -116,6 +116,7 @@ logging:
     com.UsdtWallet: DEBUG
     org.hibernate.SQL: DEBUG
     org.springframework.security: DEBUG
+    com.UsdtWallet.UsdtWallet.security: DEBUG
   file:
     name: logs/application.log
   pattern:
