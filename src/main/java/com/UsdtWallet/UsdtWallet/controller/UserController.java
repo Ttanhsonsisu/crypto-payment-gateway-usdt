@@ -71,60 +71,6 @@ public class UserController {
     }
 
     /**
-     * Check username availability
-     */
-    @GetMapping("/check-username")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> checkUsername(
-            @RequestParam String username) {
-        try {
-            boolean exists = userService.existsByUsername(username);
-
-            Map<String, Object> result = Map.of(
-                "username", username,
-                "available", !exists,
-                "exists", exists
-            );
-
-            return ResponseEntity.ok(ApiResponse.success(result));
-
-        } catch (Exception e) {
-            log.error("Error checking username: {}", e.getMessage());
-            return ResponseEntity.badRequest()
-                .body(ApiResponse.<Map<String, Object>>builder()
-                    .success(false)
-                    .message("Failed to check username: " + e.getMessage())
-                    .build());
-        }
-    }
-
-    /**
-     * Check email availability
-     */
-    @GetMapping("/check-email")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> checkEmail(
-            @RequestParam String email) {
-        try {
-            boolean exists = userService.existsByEmail(email);
-
-            Map<String, Object> result = Map.of(
-                "email", email,
-                "available", !exists,
-                "exists", exists
-            );
-
-            return ResponseEntity.ok(ApiResponse.success(result));
-
-        } catch (Exception e) {
-            log.error("Error checking email: {}", e.getMessage());
-            return ResponseEntity.badRequest()
-                .body(ApiResponse.<Map<String, Object>>builder()
-                    .success(false)
-                    .message("Failed to check email: " + e.getMessage())
-                    .build());
-        }
-    }
-
-    /**
      * Get user wallet address
      */
     @GetMapping("/wallet/{userId}")

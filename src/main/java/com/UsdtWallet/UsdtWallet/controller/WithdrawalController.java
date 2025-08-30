@@ -23,14 +23,15 @@ public class WithdrawalController {
     private final WithdrawalService withdrawalService;
 
     /**
-     * Create withdrawal request
+     * Create automated withdrawal request
+     * Flow: Points → Automatic conversion → USDT transfer on blockchain
      */
     @PostMapping("/request")
     public ResponseEntity<ApiResponse<Map<String, Object>>> createWithdrawal(
             @Valid @RequestBody WithdrawalRequest request,
             @AuthenticationPrincipal UserPrincipal userPrincipal) {
         try {
-            log.info("Withdrawal request from user: {}, amount: {}, address: {}",
+            log.info("Automated withdrawal request from user: {}, amount: {}, address: {}",
                 userPrincipal.getId(), request.getAmount(), request.getToAddress());
 
             WithdrawalTransaction withdrawal = withdrawalService.createWithdrawal(
@@ -43,11 +44,12 @@ public class WithdrawalController {
                 "status", withdrawal.getStatus(),
                 "fee", withdrawal.getFee(),
                 "netAmount", withdrawal.getNetAmount(),
-                "estimatedTime", "5-10 minutes",
+                "estimatedTime", "3-8 minutes (automated blockchain transfer)",
+                "message", "Withdrawal is being processed automatically",
                 "createdAt", withdrawal.getCreatedAt()
             );
 
-            return ResponseEntity.ok(ApiResponse.success("Withdrawal request created successfully", result));
+            return ResponseEntity.ok(ApiResponse.success("Automated withdrawal initiated successfully", result));
 
         } catch (Exception e) {
             log.error("Error creating withdrawal request", e);
